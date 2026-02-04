@@ -58,7 +58,7 @@
             Settings, CheckCircle2, PieChart, PiggyBank, Coins, 
             LayoutGrid, ArrowLeftRight, RefreshCw, AlertTriangle, ChevronRight,
             UploadCloud, FileText, Download, Plus, X, Calendar, Tag, ShoppingBag,
-            Target, BarChart3, ArrowUpRight, Percent, ChevronLeft, Save, Trash2
+            Target, BarChart3, ArrowUpRight, Percent, ChevronLeft, Save, Trash2, Edit2
         } from 'lucide-react';
         import { 
             BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -227,7 +227,7 @@
             </div>
         );
 
-        const ClassifyView = ({ currentMonthTransactions, selectedDate, toggleShared }) => {
+        const ClassifyView = ({ currentMonthTransactions, selectedDate, toggleShared, budgetConfig, updateTransaction, deleteTransaction }) => {
             const grouped = {
                 DIRECT: currentMonthTransactions.filter(t => t.source === 'DIRECT' && t.type !== 'income'),
                 RAKUTEN: currentMonthTransactions.filter(t => t.source === 'RAKUTEN'),
@@ -238,7 +238,7 @@
                 <div className="space-y-4 pb-24 animate-fade-in">
                     <div className="bg-teal-50 border border-teal-100 p-3 rounded-xl flex items-start gap-3">
                         <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5" />
-                        <div><h4 className="font-bold text-teal-800 text-sm">かんたん仕分け ({selectedDate.getMonth() + 1}月)</h4><p className="text-xs text-teal-700">スイッチONで家計に計上、OFFで除外されます。</p></div>
+                        <div><h4 className="font-bold text-teal-800 text-sm">かんたん仕分け ({selectedDate.getMonth() + 1}月)</h4><p className="text-xs text-teal-700">スイッチONで家計に計上、OFFで除外されます。<br/>明細名やカテゴリはタップで変更可能です。</p></div>
                     </div>
                     {Object.entries(grouped).map(([key, list]) => {
                         if (list.length === 0) return null;
@@ -252,17 +252,36 @@
                                 <div className="divide-y divide-slate-100">
                                     {list.map(tx => (
                                         <div key={tx.id} className={`p-3 flex items-center justify-between transition-colors ${!tx.isShared ? 'bg-slate-50/50 opacity-60' : ''}`}>
-                                            <div className="flex-1" onClick={() => toggleShared(tx.id)}>
+                                            <div className="flex-1">
                                                 <div className="flex items-center gap-1 mb-1">
-                                                    <div className="font-bold text-slate-800 text-sm">{tx.title}</div>
-                                                    {tx.source === 'SMBC' && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded">Vpass</span>}
-                                                    {tx.source === 'RAKUTEN' && <span className="text-[9px] bg-rose-100 text-rose-700 px-1 rounded">e-NAVI</span>}
+                                                    <input 
+                                                        type="text" 
+                                                        value={tx.title}
+                                                        onChange={(e) => updateTransaction(tx.id, 'title', e.target.value)}
+                                                        className="font-bold text-slate-800 text-sm bg-transparent border-b border-dashed border-slate-300 focus:border-teal-500 outline-none w-full mr-2"
+                                                    />
                                                 </div>
-                                                <div className="text-xs text-slate-500 mt-0.5">{tx.category}・{tx.date}</div>
+                                                <div className="flex items-center gap-2 mt-1.5">
+                                                    <select 
+                                                        value={tx.category}
+                                                        onChange={(e) => updateTransaction(tx.id, 'category', e.target.value)}
+                                                        className={`text-xs border rounded px-1.5 py-1 outline-none font-bold ${tx.category === '未分類' ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                                                    >
+                                                        <option value="未分類">未分類</option>
+                                                        {budgetConfig.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                                        <option value="入金">入金</option>
+                                                        <option value="振替">振替</option>
+                                                        <option value="その他">その他</option>
+                                                    </select>
+                                                    <span className="text-xs text-slate-400">{tx.date}</span>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex flex-col items-end gap-2 ml-2">
                                                 <div className={`font-bold text-sm ${tx.isShared ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{Math.abs(tx.amount).toLocaleString()}</div>
-                                                <button onClick={() => toggleShared(tx.id)} className={`w-10 h-6 rounded-full transition-colors relative ${tx.isShared ? 'bg-teal-500' : 'bg-slate-300'}`}><div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm top-1 transition-all ${tx.isShared ? 'left-5' : 'left-1'}`} /></button>
+                                                <div className="flex items-center gap-2">
+                                                    <button onClick={() => deleteTransaction(tx.id)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                                    <button onClick={() => toggleShared(tx.id)} className={`w-10 h-6 rounded-full transition-colors relative ${tx.isShared ? 'bg-teal-500' : 'bg-slate-300'}`}><div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm top-1 transition-all ${tx.isShared ? 'left-5' : 'left-1'}`} /></button>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -809,6 +828,16 @@
                 }
             };
 
+            const updateTransaction = (id, field, value) => {
+                setTransactions(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+            };
+
+            const deleteTransaction = (id) => {
+                if (confirm('この明細を削除してもよろしいですか？')) {
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                }
+            };
+
             const handleGoToPortfolio = () => { setActiveTab('analysis'); };
 
             const changeMonth = (delta) => {
@@ -854,6 +883,9 @@
                             currentMonthTransactions={currentMonthTransactions}
                             selectedDate={selectedDate}
                             toggleShared={toggleShared}
+                            budgetConfig={budgetConfig}
+                            updateTransaction={updateTransaction}
+                            deleteTransaction={deleteTransaction}
                         />}
                         {activeTab === 'analysis' && <AnalysisView 
                             selectedDate={selectedDate}
