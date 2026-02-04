@@ -1,0 +1,741 @@
+import React, { useState, useMemo } from 'react';
+import { 
+  Wallet, TrendingUp, Landmark, CreditCard, Menu, ArrowRight, 
+  Settings, CheckCircle2, PieChart, PiggyBank, Coins, 
+  LayoutGrid, ArrowLeftRight, RefreshCw, AlertTriangle, ChevronRight,
+  UploadCloud, FileText, Download, Plus, X, Calendar, Tag, ShoppingBag,
+  Target, BarChart3, ArrowUpRight, Percent, ChevronLeft
+} from 'lucide-react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  Line, ComposedChart, AreaChart, Area, Cell, Pie, PieChart as RePieChart, Legend
+} from 'recharts';
+
+/**
+ * Family Finance "Marumie" App - Full Version with Date Selection
+ * * Features:
+ * 1. Year/Month Selection in Header.
+ * 2. Dynamic Data Filtering based on selected month.
+ * 3. Mock Data for Feb and March to demonstrate switching.
+ */
+
+// --- 1. Master Configuration & Mock Data ---
+
+const PAYMENT_SOURCES = {
+  DIRECT: { id: 'direct', name: '口座引落', color: 'bg-slate-100 text-slate-600', icon: '🏦' },
+  RAKUTEN: { id: 'rakuten', name: '楽天カード', color: 'bg-rose-50 text-rose-600 border-rose-100', icon: 'Ⓡ' },
+  SMBC: { id: 'smbc', name: '三井住友', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', icon: 'S' },
+  ONEBANK: { id: 'onebank', name: 'ワンバンク', color: 'bg-blue-50 text-blue-600 border-blue-100', icon: '1' },
+};
+
+const INITIAL_BUDGET_CONFIG = [
+  { id: 'rent', name: '家賃', amount: 120000, type: 'fixed' },
+  { id: 'parent', name: '親ローン', amount: 35000, type: 'fixed' },
+  { id: 'food', name: '食費', amount: 25000, type: 'variable' },
+  { id: 'eatout', name: '外食費', amount: 15000, type: 'variable' },
+  { id: 'daily', name: '生活用品', amount: 10000, type: 'variable' },
+  { id: 'date', name: 'デート代', amount: 20000, type: 'variable' },
+  { id: 'gas', name: 'ガソリン', amount: 20000, type: 'variable' },
+  { id: 'utility', name: '光熱費', amount: 15000, type: 'fixed' },
+  { id: 'water', name: '水道代', amount: 6000, type: 'fixed', oddMonthOnly: true },
+  { id: 'server', name: 'サーバー', amount: 4000, type: 'fixed' },
+  { id: 'sub', name: 'サブスク', amount: 2000, type: 'fixed' },
+];
+
+const INITIAL_SAVINGS_CONFIG = [
+  { id: 'hus_cash', name: '夫貯金', amount: 40000, type: 'cash', owner: 'husband' },
+  { id: 'wife_cash', name: '妻貯金', amount: 70000, type: 'cash', owner: 'wife' },
+  { id: 'nisa', name: '積立NISA', amount: 30000, type: 'invest', owner: 'husband' },
+  { id: 'car', name: '車検積立', amount: 10000, type: 'reserve', owner: 'shared' },
+];
+
+// Mock Asset History (6 Months)
+const ASSET_HISTORY_DETAILED = [
+  { month: '10月', cash: 2500000, invest: 500000, total: 3000000 },
+  { month: '11月', cash: 2620000, invest: 532000, total: 3152000 },
+  { month: '12月', cash: 3000000, invest: 565000, total: 3565000 }, // Bonus season
+  { month: '1月', cash: 3120000, invest: 598000, total: 3718000 },
+  { month: '2月', cash: 3240000, invest: 635000, total: 3875000 },
+  { month: '3月', cash: 3375000, invest: 670000, total: 4045000 }, // Current base
+];
+
+// Current Snapshot of Assets (Stock)
+const CURRENT_ASSETS_DETAIL = {
+  cash: {
+    husband: 1200000,
+    wife: 1950000,
+    shared_surplus: 155000, 
+    car_reserve: 70000,
+  },
+  investment: {
+    nisa_principal: 610000,
+    nisa_profit: 60000,
+  }
+};
+
+// Initial Transactions Data (Flow) - Expanded for Feb & March
+const INITIAL_TRANSACTIONS = [
+  // --- March Data ---
+  // Income
+  { id: 101, date: '2024.03.25', title: '共同口座入金 (夫)', category: '入金', source: 'DIRECT', amount: 220000, type: 'income', isShared: true },
+  { id: 102, date: '2024.03.25', title: '共同口座入金 (妻)', category: '入金', source: 'DIRECT', amount: 200000, type: 'income', isShared: true },
+  // Expenses
+  { id: 1, date: '2024.03.27', title: '家賃 3月分', category: '家賃', source: 'DIRECT', amount: -120000, type: 'expense', isShared: true },
+  { id: 2, date: '2024.03.27', title: '親ローン返済', category: '親ローン', source: 'DIRECT', amount: -35000, type: 'expense', isShared: true },
+  { id: 3, date: '2024.03.15', title: '電気・ガス代', category: '光熱費', source: 'DIRECT', amount: -13500, type: 'expense', isShared: true },
+  { id: 4, date: '2024.03.20', title: 'ENEOS SS', category: 'ガソリン', source: 'RAKUTEN', amount: -15000, type: 'expense', isShared: true },
+  { id: 5, date: '2024.03.18', title: 'マツモトキヨシ', category: '生活用品', source: 'RAKUTEN', amount: -8200, type: 'expense', isShared: true },
+  { id: 6, date: '2024.03.10', title: 'ETC利用料', category: 'ガソリン', source: 'RAKUTEN', amount: -3500, type: 'expense', isShared: true },
+  { id: 7, date: '2024.03.08', title: 'スーパーライフ', category: '食費', source: 'ONEBANK', amount: -18000, type: 'expense', isShared: true },
+  { id: 8, date: '2024.03.14', title: 'セブンイレブン', category: '食費', source: 'ONEBANK', amount: -3500, type: 'expense', isShared: true },
+  { id: 9, date: '2024.03.21', title: '焼肉トラジ', category: '外食費', source: 'SMBC', amount: -12000, type: 'expense', isShared: true },
+  { id: 10, date: '2024.03.03', title: '映画鑑賞ペア', category: 'デート代', source: 'SMBC', amount: -18000, type: 'expense', isShared: true },
+  { id: 11, date: '2024.03.01', title: 'Netflix', category: 'サブスク', source: 'SMBC', amount: -1980, type: 'expense', isShared: true },
+  { id: 12, date: '2024.03.05', title: 'ウォーターサーバー', category: 'サーバー', source: 'SMBC', amount: -3980, type: 'expense', isShared: true },
+  
+  // --- February Data (Sample) ---
+  { id: 201, date: '2024.02.25', title: '共同口座入金 (夫)', category: '入金', source: 'DIRECT', amount: 220000, type: 'income', isShared: true },
+  { id: 202, date: '2024.02.25', title: '共同口座入金 (妻)', category: '入金', source: 'DIRECT', amount: 200000, type: 'income', isShared: true },
+  { id: 203, date: '2024.02.27', title: '家賃 2月分', category: '家賃', source: 'DIRECT', amount: -120000, type: 'expense', isShared: true },
+  { id: 204, date: '2024.02.27', title: '親ローン返済', category: '親ローン', source: 'DIRECT', amount: -35000, type: 'expense', isShared: true },
+  { id: 205, date: '2024.02.15', title: '電気・ガス代', category: '光熱費', source: 'DIRECT', amount: -18500, type: 'expense', isShared: true }, // Higher in winter
+  { id: 206, date: '2024.02.10', title: 'バレンタイン', category: 'デート代', source: 'SMBC', amount: -25000, type: 'expense', isShared: true },
+  { id: 207, date: '2024.02.05', title: 'スーパーライフ', category: '食費', source: 'ONEBANK', amount: -28000, type: 'expense', isShared: true },
+];
+
+// --- 2. Shared UI Components ---
+
+const Card = ({ children, className = "", onClick }) => (
+  <div onClick={onClick} className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
+
+const ProgressBar = ({ current, max, colorClass = "bg-teal-500" }) => {
+  const percentage = Math.min(100, Math.max(0, (current / max) * 100));
+  const isOver = current > max;
+  return (
+    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+      <div 
+        className={`h-full transition-all duration-500 ${isOver ? 'bg-rose-500' : colorClass}`} 
+        style={{ width: `${isOver ? 100 : percentage}%` }}
+      />
+    </div>
+  );
+};
+
+// --- Manual Input Modal ---
+const ManualInputModal = ({ isOpen, onClose, onSave, budgetConfig, defaultDate }) => {
+    const defaultDateStr = defaultDate.toISOString().slice(0, 10).replace(/-/g, '.');
+    const [formData, setFormData] = useState({
+        date: defaultDateStr,
+        title: '',
+        amount: '',
+        category: budgetConfig[0].name,
+        source: 'DIRECT'
+    });
+
+    // Reset date when defaultDate changes or modal opens
+    React.useEffect(() => {
+        if(isOpen) setFormData(prev => ({...prev, date: defaultDateStr}));
+    }, [isOpen, defaultDateStr]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = () => {
+        if (!formData.title || !formData.amount) return; 
+        onSave({
+            ...formData,
+            amount: -Math.abs(Number(formData.amount)) 
+        });
+        setFormData({ ...formData, title: '', amount: '' }); 
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-fade-in-up">
+                <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
+                    <h3 className="font-bold flex items-center gap-2"><Plus className="w-5 h-5" /> 手入力で追加</h3>
+                    <button onClick={onClose}><X className="w-6 h-6 text-slate-400" /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> 日付</label>
+                        <input type="text" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="YYYY.MM.DD" />
+                    </div>
+                    <div className="flex gap-3">
+                        <div className="flex-1">
+                             <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><CreditCard className="w-3 h-3"/> 支払い元</label>
+                             <select value={formData.source} onChange={(e) => setFormData({...formData, source: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
+                                 {Object.values(PAYMENT_SOURCES).map(src => (
+                                     <option key={src.id} value={src.id.toUpperCase()}>{src.name}</option>
+                                 ))}
+                             </select>
+                        </div>
+                        <div className="flex-1">
+                             <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Tag className="w-3 h-3"/> 項目</label>
+                             <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
+                                 {budgetConfig.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                 <option value="その他">その他</option>
+                             </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1">内容</label>
+                        <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="例: スーパーなど" />
+                    </div>
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1">金額 (円)</label>
+                        <div className="relative">
+                            <input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-4 pr-10 text-xl font-bold text-slate-800 outline-none text-right" placeholder="0" />
+                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">円</span>
+                        </div>
+                    </div>
+                    <button onClick={handleSubmit} className="w-full bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-700 transition-all mt-2 active:scale-95">追加する</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- 3. Main Application ---
+
+export default function FamilyFinanceApp() {
+  const [activeTab, setActiveTab] = useState('home'); 
+  const [selectedDate, setSelectedDate] = useState(new Date('2024-03-01')); // Default to March 2024
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Global State
+  const [contributions, setContributions] = useState({ husband: 220000, wife: 200000 });
+  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+  const [budgetConfig, setBudgetConfig] = useState(INITIAL_BUDGET_CONFIG);
+
+  // --- Derived Data Calculations (Dependent on Selected Date) ---
+  
+  const isOddMonth = (selectedDate.getMonth() + 1) % 2 !== 0;
+
+  // Filter transactions for the selected month
+  const currentMonthTransactions = useMemo(() => {
+    return transactions.filter(t => {
+        // Parse "YYYY.MM.DD"
+        const [year, month] = t.date.split('.').map(Number);
+        return year === selectedDate.getFullYear() && month === (selectedDate.getMonth() + 1);
+    });
+  }, [transactions, selectedDate]);
+
+  const validTransactions = useMemo(() => currentMonthTransactions.filter(t => t.isShared), [currentMonthTransactions]);
+  
+  // Calculate Totals for the Month
+  const categoryTotals = useMemo(() => {
+    const totals = {};
+    validTransactions.filter(t => t.type === 'expense').forEach(t => {
+       totals[t.category] = (totals[t.category] || 0) + Math.abs(t.amount);
+    });
+    return totals;
+  }, [validTransactions]);
+
+  // Income for the month (Check if income transactions exist, otherwise use fixed contribution setting)
+  const monthlyIncomeTransactions = validTransactions.filter(t => t.type === 'income');
+  const actualMonthlyIncome = monthlyIncomeTransactions.length > 0 
+      ? monthlyIncomeTransactions.reduce((acc, t) => acc + t.amount, 0)
+      : contributions.husband + contributions.wife; // Fallback to settings if no income logged
+
+  const currentTotalExpenses = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
+  const totalSavingsPlanned = INITIAL_SAVINGS_CONFIG.reduce((sum, s) => sum + s.amount, 0);
+  const surplus = actualMonthlyIncome - currentTotalExpenses - totalSavingsPlanned;
+
+  // Asset Totals (Global / Snapshot - not strictly filtered by date for this demo, usually represents "Current State")
+  // In a real app, you'd calculate asset state at end of selected month. 
+  // For now, we show the static asset snapshot but calculate growth based on the fixed history.
+  const currentTotalAssets = ASSET_HISTORY_DETAILED[ASSET_HISTORY_DETAILED.length - 1].total + (surplus > 0 ? surplus : 0);
+  const totalCash = Object.values(CURRENT_ASSETS_DETAIL.cash).reduce((a, b) => a + b, 0);
+  const totalInvest = CURRENT_ASSETS_DETAIL.investment.nisa_principal + CURRENT_ASSETS_DETAIL.investment.nisa_profit;
+  const growthSinceStart = currentTotalAssets - ASSET_HISTORY_DETAILED[0].total;
+
+  // Handlers
+  const toggleShared = (id) => {
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, isShared: !t.isShared } : t));
+  };
+
+  const handleManualAdd = (data) => {
+      const newTx = { id: Date.now(), ...data, type: 'expense', isShared: true };
+      setTransactions(prev => [newTx, ...prev]);
+  };
+
+  const handleGoToPortfolio = () => { setActiveTab('analysis'); };
+
+  const changeMonth = (delta) => {
+      const newDate = new Date(selectedDate);
+      newDate.setMonth(newDate.getMonth() + delta);
+      setSelectedDate(newDate);
+  };
+
+  // --- Views ---
+
+  const HomeView = () => (
+    <div className="space-y-6 pb-24 animate-fade-in">
+      {/* Top Asset Summary (Global) */}
+      <div className="text-center py-6 bg-white rounded-b-3xl shadow-sm border-b border-slate-100 -mt-4 mx-[-16px] px-4 relative overflow-hidden">
+         <div className="relative z-10">
+            <div className="text-xs font-bold text-slate-500 mb-2 flex items-center justify-center gap-2">
+            <Landmark className="w-4 h-4 text-teal-600" /> 総資産額 (現在)
+            </div>
+            <div className="text-4xl font-extrabold text-slate-800 tracking-tight">
+            {(currentTotalAssets / 10000).toFixed(0)}<span className="text-xl">万円</span>
+            </div>
+            <div className="mt-3 flex justify-center gap-2">
+                <span className="text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded-full border border-teal-100 font-bold flex items-center">
+                半年で +{(growthSinceStart/10000).toFixed(1)}万円 <TrendingUp className="w-3 h-3 ml-1"/>
+                </span>
+            </div>
+         </div>
+      </div>
+
+      {/* Monthly Result Card (Filtered by Date) */}
+      <Card className="bg-slate-800 text-white p-4 relative overflow-hidden border-slate-700 mt-2">
+          <div className="relative z-10">
+              <div className="flex justify-between items-start">
+                  <div>
+                      <div className="text-xs text-slate-400 font-bold mb-1 flex items-center gap-2">
+                          <Calendar className="w-3 h-3" />
+                          {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の余剰資金
+                      </div>
+                      <div className="text-2xl font-extrabold text-amber-400">
+                          {surplus > 0 ? '+' : ''}{surplus.toLocaleString()}<span className="text-xs text-slate-400 font-normal ml-1">円</span>
+                      </div>
+                  </div>
+                  <div className="text-right">
+                      <div className="text-[10px] text-slate-400 mb-1">予算進捗</div>
+                      <div className={`text-lg font-bold ${(currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) > 1 ? 'text-rose-400' : 'text-teal-400'}`}>
+                          {Math.round((currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) * 100)}%
+                      </div>
+                  </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between text-xs text-slate-300">
+                  <span>収入: {actualMonthlyIncome.toLocaleString()}</span>
+                  <span>支出: {currentTotalExpenses.toLocaleString()}</span>
+              </div>
+          </div>
+      </Card>
+
+      {/* Asset Trend Chart Link */}
+      <Card className="p-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={handleGoToPortfolio}>
+           <div className="flex justify-between items-center mb-4">
+               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                   <TrendingUp className="w-4 h-4 text-teal-600" /> 資産の推移
+               </h3>
+               <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+           </div>
+           <div className="h-40 w-full pointer-events-none">
+             <ResponsiveContainer width="100%" height="100%">
+               <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', total: currentTotalAssets }]} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                 <defs>
+                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                     <stop offset="5%" stopColor="#0d9488" stopOpacity={0.1}/>
+                     <stop offset="95%" stopColor="#0d9488" stopOpacity={0}/>
+                   </linearGradient>
+                 </defs>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
+                 <Area type="monotone" dataKey="total" stroke="#0d9488" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
+               </AreaChart>
+             </ResponsiveContainer>
+           </div>
+      </Card>
+
+      {/* Quick Asset Breakdown */}
+      <div className="grid grid-cols-2 gap-3">
+          <Card className="p-4" onClick={handleGoToPortfolio}>
+             <div className="flex items-center gap-2 mb-2">
+                 <div className="p-1.5 bg-teal-100 text-teal-600 rounded-full"><PiggyBank className="w-4 h-4" /></div>
+                 <div className="text-xs font-bold text-slate-500">現金</div>
+             </div>
+             <div className="text-lg font-bold text-slate-800">{(totalCash/10000).toFixed(0)}<span className="text-xs">万円</span></div>
+             <div className="text-[10px] text-slate-400">生活防衛資金</div>
+          </Card>
+          <Card className="p-4" onClick={handleGoToPortfolio}>
+             <div className="flex items-center gap-2 mb-2">
+                 <div className="p-1.5 bg-blue-100 text-blue-600 rounded-full"><TrendingUp className="w-4 h-4" /></div>
+                 <div className="text-xs font-bold text-slate-500">投資</div>
+             </div>
+             <div className="text-lg font-bold text-slate-800">{(totalInvest/10000).toFixed(0)}<span className="text-xs">万円</span></div>
+             <div className="text-[10px] text-rose-500 font-bold">+{(CURRENT_ASSETS_DETAIL.investment.nisa_profit/10000).toFixed(1)}万円</div>
+          </Card>
+      </div>
+    </div>
+  );
+
+  const AnalysisView = () => {
+    const [subTab, setSubTab] = useState('portfolio'); 
+
+    // Portfolio Data
+    const pieData = [
+        { name: '夫貯金', value: CURRENT_ASSETS_DETAIL.cash.husband, fill: '#2dd4bf' },
+        { name: '妻貯金', value: CURRENT_ASSETS_DETAIL.cash.wife, fill: '#14b8a6' },
+        { name: '共同・余剰', value: CURRENT_ASSETS_DETAIL.cash.shared_surplus + (surplus > 0 ? surplus : 0), fill: '#fbbf24' },
+        { name: '車検積立', value: CURRENT_ASSETS_DETAIL.cash.car_reserve, fill: '#94a3b8' },
+        { name: 'NISA(投資)', value: totalInvest, fill: '#3b82f6' },
+    ];
+    const pieTotal = pieData.reduce((acc, item) => acc + item.value, 0);
+
+    // Budget Calculations (Filtered by Date)
+    const activeBudgets = budgetConfig.filter(b => !b.oddMonthOnly || isOddMonth);
+
+    // BS Data
+    const assetData = [
+      { name: '夫貯金', value: 40000, fill: '#2dd4bf' },
+      { name: '妻貯金', value: 70000, fill: '#14b8a6' },
+      { name: 'NISA', value: 30000, fill: '#0d9488' },
+      { name: '車検積立', value: 10000, fill: '#0f766e' },
+      { name: '余剰資金', value: surplus > 0 ? surplus : 0, fill: '#fbbf24' },
+    ];
+    const totalAssetsCreated = totalSavingsPlanned + (surplus > 0 ? surplus : 0);
+
+    return (
+      <div className="space-y-6 pb-24 animate-fade-in">
+         {/* Sub Navigation */}
+         <div className="flex bg-slate-100 p-1 rounded-lg">
+             {['portfolio', 'budget', 'bs'].map(tab => (
+                 <button key={tab} onClick={() => setSubTab(tab)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${subTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                     {tab === 'portfolio' && '資産構成'}
+                     {tab === 'budget' && '予算管理'}
+                     {tab === 'bs' && '貸借対照表'}
+                 </button>
+             ))}
+         </div>
+
+         {/* 1. Portfolio */}
+         {subTab === 'portfolio' && (
+             <div className="space-y-4">
+                 <Card className="p-4">
+                     <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
+                         <PieChart className="w-4 h-4 text-teal-600" /> 資産ポートフォリオ (現在)
+                     </h3>
+                     <div className="h-52 w-full flex justify-center">
+                         <ResponsiveContainer width="100%" height="100%">
+                             <RePieChart>
+                                 <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                                     {pieData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.fill} />))}
+                                 </Pie>
+                                 <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                             </RePieChart>
+                         </ResponsiveContainer>
+                     </div>
+                     <div className="grid grid-cols-2 gap-2 mt-2">
+                         {pieData.map((entry, i) => (
+                             <div key={i} className="flex items-center justify-between text-xs">
+                                 <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.fill }}></div><span className="text-slate-600">{entry.name}</span></div>
+                                 <span className="font-bold text-slate-700">{Math.round((entry.value / pieTotal) * 100)}%</span>
+                             </div>
+                         ))}
+                     </div>
+                 </Card>
+
+                 <Card className="p-4">
+                     <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
+                         <BarChart3 className="w-4 h-4 text-blue-500" /> 長期資産推移 (現金 vs 投資)
+                     </h3>
+                     <div className="h-52 w-full">
+                         <ResponsiveContainer width="100%" height="100%">
+                             <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', cash: totalCash, invest: totalInvest, total: currentTotalAssets }]} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
+                                 <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                 <Area type="monotone" dataKey="cash" stackId="1" stroke="#2dd4bf" fill="#2dd4bf" name="現金" />
+                                 <Area type="monotone" dataKey="invest" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="投資" />
+                             </AreaChart>
+                         </ResponsiveContainer>
+                     </div>
+                 </Card>
+
+                 <div className="grid grid-cols-2 gap-3">
+                     <Card className="p-3 bg-blue-50 border-blue-100">
+                         <div className="text-[10px] font-bold text-blue-600 mb-1 flex items-center gap-1"><Target className="w-3 h-3"/> NISA 運用益率</div>
+                         <div className="text-xl font-extrabold text-slate-800">+11.8<span className="text-sm font-normal text-slate-500">%</span></div>
+                         <div className="text-[10px] text-slate-500 mt-1">含み益 +6.0万円</div>
+                     </Card>
+                     <Card className="p-3 bg-teal-50 border-teal-100">
+                         <div className="text-[10px] font-bold text-teal-600 mb-1 flex items-center gap-1"><Percent className="w-3 h-3"/> 今月の貯蓄率</div>
+                         <div className="text-xl font-extrabold text-slate-800">{Math.round((totalAssetsCreated / actualMonthlyIncome) * 100)}<span className="text-sm font-normal text-slate-500">%</span></div>
+                         <div className="text-[10px] text-slate-500 mt-1">目標30% / 実績</div>
+                     </Card>
+                 </div>
+             </div>
+         )}
+
+         {/* 2. Budget */}
+         {subTab === 'budget' && (
+             <div>
+                <div className="mb-3 text-center text-xs font-bold text-slate-500">
+                    {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の予算
+                </div>
+                <Card className="divide-y divide-slate-100">
+                    {activeBudgets.map(budget => {
+                        const current = categoryTotals[budget.name] || 0;
+                        const remaining = budget.amount - current;
+                        const isOver = remaining < 0;
+                        return (
+                            <div key={budget.id} className="p-4">
+                                <div className="flex justify-between items-end mb-2">
+                                    <span className="font-bold text-slate-800 text-sm">{budget.name}</span>
+                                    <span className={`font-bold text-sm ${isOver ? 'text-rose-500' : 'text-slate-500'}`}>{current.toLocaleString()} <span className="text-[10px] font-normal">/ {budget.amount.toLocaleString()}</span></span>
+                                </div>
+                                <ProgressBar current={current} max={budget.amount} colorClass={budget.type === 'fixed' ? 'bg-slate-400' : 'bg-teal-500'} />
+                                <div className="flex justify-between mt-1 text-[10px]">
+                                    <span className="text-slate-400">{isOddMonth && budget.oddMonthOnly ? '(奇数月計上)' : ''}</span>
+                                    <span className={`font-bold ${isOver ? 'text-rose-500' : 'text-teal-600'}`}>{isOver ? `Over ${Math.abs(remaining).toLocaleString()}` : `あと ${remaining.toLocaleString()}`}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </Card>
+             </div>
+         )}
+         
+         {/* 3. BS View */}
+         {subTab === 'bs' && (
+             <div>
+                <div className="mb-3 text-center text-xs font-bold text-slate-500">
+                    {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の貸借対照表
+                </div>
+                <Card className="p-1 mb-4">
+                    <div className="flex w-full min-h-[300px] gap-1">
+                        <div className="w-1/2 flex flex-col gap-1">
+                            <div className="bg-teal-50 p-2 text-center text-teal-800 font-bold text-xs rounded-t-lg">資産の増加</div>
+                            <div className="flex-1 flex flex-col gap-0.5 bg-slate-100 rounded-b-lg overflow-hidden p-1">
+                                {assetData.map((asset, idx) => (
+                                    <div key={idx} className="w-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm" style={{ height: `${(asset.value / totalAssetsCreated) * 100}%`, backgroundColor: asset.fill, minHeight: '20px' }}>{asset.name}</div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="w-1/2 flex flex-col gap-1">
+                            <div className="bg-blue-50 p-2 text-center text-blue-800 font-bold text-xs rounded-t-lg">純収入</div>
+                            <div className="flex-1 bg-blue-500 rounded-b-lg flex flex-col items-center justify-center text-white p-2">
+                                <div className="text-xl font-extrabold">+{totalAssetsCreated.toLocaleString()}</div>
+                                <div className="text-[10px]">家計黒字額</div>
+                            </div>
+                        </div>
+                    </div>
+                </Card>
+                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500">
+                    <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">確実な貯金</div>{INITIAL_SAVINGS_CONFIG.map(s => <div key={s.id} className="flex justify-between"><span>{s.name}</span><span>{s.amount/10000}万</span></div>)}</div>
+                    <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">余剰資金</div><div className="flex justify-between"><span>合計</span><span>{(surplus/10000).toFixed(1)}万</span></div></div>
+                </div>
+             </div>
+         )}
+      </div>
+    );
+  };
+
+  const ClassifyView = () => {
+    // Show only transactions for selected month? Or all unclassified?
+    // Usually "Classify" is for inbox, so show all. But filtering helps.
+    // Let's keep it filtered to help focus.
+    
+    const grouped = {
+      DIRECT: currentMonthTransactions.filter(t => t.source === 'DIRECT' && t.type !== 'income'),
+      RAKUTEN: currentMonthTransactions.filter(t => t.source === 'RAKUTEN'),
+      SMBC: currentMonthTransactions.filter(t => t.source === 'SMBC'),
+      ONEBANK: currentMonthTransactions.filter(t => t.source === 'ONEBANK'),
+    };
+    return (
+      <div className="space-y-4 pb-24 animate-fade-in">
+        <div className="bg-teal-50 border border-teal-100 p-3 rounded-xl flex items-start gap-3">
+          <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5" />
+          <div><h4 className="font-bold text-teal-800 text-sm">かんたん仕分け ({selectedDate.getMonth() + 1}月)</h4><p className="text-xs text-teal-700">スイッチONで家計に計上、OFFで除外されます。</p></div>
+        </div>
+        {Object.entries(grouped).map(([key, list]) => {
+            if (list.length === 0) return null;
+            const source = PAYMENT_SOURCES[key];
+            return (
+                <Card key={key} className="mb-4">
+                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                        <div className="flex items-center gap-2"><span className="text-lg">{source.icon}</span><span className="font-bold text-slate-700 text-sm">{source.name}</span></div>
+                        <span className="text-xs text-slate-400">{list.length}件</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                        {list.map(tx => (
+                            <div key={tx.id} className={`p-3 flex items-center justify-between transition-colors ${!tx.isShared ? 'bg-slate-50/50 opacity-60' : ''}`}>
+                                <div className="flex-1" onClick={() => toggleShared(tx.id)}>
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <div className="font-bold text-slate-800 text-sm">{tx.title}</div>
+                                        {tx.source === 'SMBC' && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded">Vpass</span>}
+                                        {tx.source === 'RAKUTEN' && <span className="text-[9px] bg-rose-100 text-rose-700 px-1 rounded">e-NAVI</span>}
+                                    </div>
+                                    <div className="text-xs text-slate-500 mt-0.5">{tx.category}・{tx.date}</div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className={`font-bold text-sm ${tx.isShared ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{Math.abs(tx.amount).toLocaleString()}</div>
+                                    <button onClick={() => toggleShared(tx.id)} className={`w-10 h-6 rounded-full transition-colors relative ${tx.isShared ? 'bg-teal-500' : 'bg-slate-300'}`}><div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm top-1 transition-all ${tx.isShared ? 'left-5' : 'left-1'}`} /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            );
+        })}
+        {Object.values(grouped).every(list => list.length === 0) && (
+            <div className="text-center py-10 text-slate-400 text-sm">
+                この月の明細はありません。<br/>CSVを取り込むか、手入力してください。
+            </div>
+        )}
+      </div>
+    );
+  };
+
+  const SettingsView = () => {
+    const [vpassStatus, setVpassStatus] = useState('idle');
+    const [rakutenStatus, setRakutenStatus] = useState('idle');
+    const [vpassCount, setVpassCount] = useState(0);
+    const [rakutenCount, setRakutenCount] = useState(0);
+
+    const handleVpassFile = () => {
+        setVpassStatus('processing');
+        setTimeout(() => {
+            const newTransactions = [
+                { id: Date.now() + 1, date: '2024.03.29', title: 'スターバックス', category: '外食費', source: 'SMBC', amount: -650, type: 'expense', isShared: true },
+                { id: Date.now() + 2, date: '2024.03.28', title: 'ユニクロ', category: '生活用品', source: 'SMBC', amount: -4990, type: 'expense', isShared: true },
+            ];
+            setTransactions(prev => [...newTransactions, ...prev]);
+            setVpassStatus('success');
+            setVpassCount(newTransactions.length);
+            setTimeout(() => setVpassStatus('idle'), 3000);
+        }, 1500);
+    };
+
+    const handleRakutenFile = () => {
+        setRakutenStatus('processing');
+        setTimeout(() => {
+            const newTransactions = [
+                { id: Date.now() + 10, date: '2024.03.25', title: '楽天市場', category: '生活用品', source: 'RAKUTEN', amount: -3980, type: 'expense', isShared: true },
+                { id: Date.now() + 11, date: '2024.03.24', title: 'ENEOS', category: 'ガソリン', source: 'RAKUTEN', amount: -4500, type: 'expense', isShared: true },
+            ];
+            setTransactions(prev => [...newTransactions, ...prev]);
+            setRakutenStatus('success');
+            setRakutenCount(newTransactions.length);
+            setTimeout(() => setRakutenStatus('idle'), 3000);
+        }, 1500);
+    };
+
+    return (
+        <div className="space-y-6 pb-24 animate-fade-in">
+            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Settings className="w-5 h-5" /> 設定</h3>
+            
+            {/* Vpass Import */}
+            <Card className="p-6 border-emerald-100 bg-emerald-50/30">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><FileText className="w-5 h-5" /></div>
+                    <div><h4 className="font-bold text-slate-800">三井住友カード (Vpass)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
+                </div>
+                <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={handleVpassFile}>
+                    {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVをドロップ</p></>)}
+                    {vpassStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-2" /><p className="text-sm font-bold text-emerald-600">読み込み中...</p></div>)}
+                    {vpassStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" /><p className="text-sm font-bold text-emerald-600">完了！</p><p className="text-xs text-emerald-500">{vpassCount}件を追加</p></div>)}
+                </div>
+            </Card>
+
+            {/* Rakuten Import */}
+            <Card className="p-6 border-rose-100 bg-rose-50/30">
+                <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-rose-100 rounded-full text-rose-600"><ShoppingBag className="w-5 h-5" /></div>
+                    <div><h4 className="font-bold text-slate-800">楽天カード (e-NAVI)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
+                </div>
+                <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={handleRakutenFile}>
+                    {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVをドロップ</p></>)}
+                    {rakutenStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mb-2" /><p className="text-sm font-bold text-rose-600">読み込み中...</p></div>)}
+                    {rakutenStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-rose-500 mb-2" /><p className="text-sm font-bold text-rose-600">完了！</p><p className="text-xs text-rose-500">{rakutenCount}件を追加</p></div>)}
+                </div>
+            </Card>
+
+            {/* Income Settings */}
+            <Card className="p-6">
+               <div className="space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                     <span className="font-bold text-slate-600">夫の入金額</span>
+                     <input type="number" value={contributions.husband} onChange={e => setContributions({...contributions, husband: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                     <span className="font-bold text-slate-600">妻の入金額</span>
+                     <input type="number" value={contributions.wife} onChange={e => setContributions({...contributions, wife: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
+                  </div>
+               </div>
+            </Card>
+        </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f0f9f6] font-sans text-slate-800 relative">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3">
+        <div className="max-w-md mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-white border-2 border-slate-800 rounded flex flex-col justify-center items-center shadow-[2px_2px_0px_0px_rgba(30,41,59,1)]">
+                <span className="text-[10px] leading-none font-bold text-slate-800">家族</span>
+                <span className="text-[10px] leading-none font-bold text-slate-800">家計</span>
+            </div>
+            <div>
+              <h1 className="text-base font-extrabold text-slate-800 leading-tight">家族まる見え<br/>家計簿</h1>
+            </div>
+          </div>
+          
+          {/* Month Selector */}
+          <div className="flex items-center bg-slate-100 rounded-full p-1">
+              <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+              <span className="text-xs font-bold px-2 text-slate-700 min-w-[80px] text-center">{selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月</span>
+              <button onClick={() => changeMonth(1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronRight className="w-4 h-4 text-slate-500" /></button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-md mx-auto p-4">
+        {activeTab === 'home' && <HomeView />}
+        {activeTab === 'classify' && <ClassifyView />}
+        {activeTab === 'analysis' && <AnalysisView />}
+        {activeTab === 'settings' && <SettingsView />}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe z-40">
+        <div className="max-w-md mx-auto grid grid-cols-4 h-16">
+            <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'home' ? 'text-teal-600' : 'text-slate-400'}`}>
+                <Landmark className="w-6 h-6" />
+                <span className="text-[10px] font-bold">ホーム</span>
+            </button>
+            <button onClick={() => setActiveTab('classify')} className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'classify' ? 'text-teal-600' : 'text-slate-400'}`}>
+                <CreditCard className="w-6 h-6" />
+                <span className="text-[10px] font-bold">仕分け</span>
+            </button>
+            <button onClick={() => setActiveTab('analysis')} className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'analysis' ? 'text-teal-600' : 'text-slate-400'}`}>
+                <PieChart className="w-6 h-6" />
+                <span className="text-[10px] font-bold">分析</span>
+            </button>
+            <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center justify-center gap-1 ${activeTab === 'settings' ? 'text-teal-600' : 'text-slate-400'}`}>
+                <Settings className="w-6 h-6" />
+                <span className="text-[10px] font-bold">設定</span>
+            </button>
+        </div>
+      </nav>
+      <div className="h-16" /> 
+
+      {/* Floating Action Button */}
+      <div className="fixed bottom-24 right-6 z-50">
+          <button onClick={() => setIsModalOpen(true)} className="w-14 h-14 bg-slate-800 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-slate-700 transition-all active:scale-95">
+              <Plus className="w-8 h-8" />
+          </button>
+      </div>
+
+      <ManualInputModal 
+          isOpen={isModalOpen} 
+          onClose={() => setIsModalOpen(false)} 
+          onSave={handleManualAdd} 
+          budgetConfig={budgetConfig} 
+          defaultDate={selectedDate}
+      />
+    </div>
+  );
+}
+
+
