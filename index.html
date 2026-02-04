@@ -51,7 +51,6 @@
     <!-- アプリケーションコード -->
     <!-- data-type="module" と data-presets="react" を指定してBabelにESMとして処理させる -->
     <script type="text/babel" data-type="module" data-presets="react">
-        // useRefを追加
         import React, { useState, useMemo, useEffect, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
@@ -126,6 +125,515 @@
             return (
                 <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                     <div className={`h-full transition-all duration-500 ${isOver ? 'bg-rose-500' : colorClass}`} style={{ width: `${isOver ? 100 : percentage}%` }} />
+                </div>
+            );
+        };
+
+        // View Components - Extracted to prevent re-rendering issues
+
+        const HomeView = ({ 
+            selectedDate, surplus, currentTotalExpenses, actualMonthlyIncome, 
+            totalSavingsPlanned, currentTotalAssets, growthSinceStart, 
+            totalCash, totalInvest, handleGoToPortfolio 
+        }) => (
+            <div className="space-y-6 pb-24 animate-fade-in">
+                <div className="text-center py-6 bg-white rounded-b-3xl shadow-sm border-b border-slate-100 -mt-4 mx-[-16px] px-4 relative overflow-hidden">
+                    <div className="relative z-10">
+                        <div className="text-xs font-bold text-slate-500 mb-2 flex items-center justify-center gap-2">
+                        <Landmark className="w-4 h-4 text-teal-600" /> 総資産額 (現在)
+                        </div>
+                        <div className="text-4xl font-extrabold text-slate-800 tracking-tight">
+                        {(currentTotalAssets / 10000).toFixed(0)}<span className="text-xl">万円</span>
+                        </div>
+                        <div className="mt-3 flex justify-center gap-2">
+                            <span className="text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded-full border border-teal-100 font-bold flex items-center">
+                            開始比 +{(growthSinceStart/10000).toFixed(1)}万円 <TrendingUp className="w-3 h-3 ml-1"/>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <Card className="bg-slate-800 text-white p-4 relative overflow-hidden border-slate-700 mt-2">
+                    <div className="relative z-10">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <div className="text-xs text-slate-400 font-bold mb-1 flex items-center gap-2">
+                                    <Calendar className="w-3 h-3" />
+                                    {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の余剰資金
+                                </div>
+                                <div className="text-2xl font-extrabold text-amber-400">
+                                    {surplus > 0 ? '+' : ''}{surplus.toLocaleString()}<span className="text-xs text-slate-400 font-normal ml-1">円</span>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] text-slate-400 mb-1">予算進捗</div>
+                                <div className={`text-lg font-bold ${(currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) > 1 ? 'text-rose-400' : 'text-teal-400'}`}>
+                                    {actualMonthlyIncome - totalSavingsPlanned > 0 
+                                        ? Math.round((currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) * 100)
+                                        : '--'}%
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between text-xs text-slate-300">
+                            <span>収入: {actualMonthlyIncome.toLocaleString()}</span>
+                            <span>支出: {currentTotalExpenses.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </Card>
+
+                <Card className="p-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={handleGoToPortfolio}>
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4 text-teal-600" /> 資産の推移
+                        </h3>
+                        <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
+                    </div>
+                    <div className="h-40 w-full pointer-events-none">
+                        <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', total: currentTotalAssets }]} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                            <defs>
+                            <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#0d9488" stopOpacity={0.1}/>
+                                <stop offset="95%" stopColor="#0d9488" stopOpacity={0}/>
+                            </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
+                            <Area type="monotone" dataKey="total" stroke="#0d9488" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
+                        </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </Card>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <Card className="p-4" onClick={handleGoToPortfolio}>
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="p-1.5 bg-teal-100 text-teal-600 rounded-full"><PiggyBank className="w-4 h-4" /></div>
+                            <div className="text-xs font-bold text-slate-500">現金</div>
+                        </div>
+                        <div className="text-lg font-bold text-slate-800">{(totalCash/10000).toFixed(0)}<span className="text-xs">万円</span></div>
+                        <div className="text-[10px] text-slate-400">生活防衛資金</div>
+                    </Card>
+                    <Card className="p-4" onClick={handleGoToPortfolio}>
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="p-1.5 bg-blue-100 text-blue-600 rounded-full"><TrendingUp className="w-4 h-4" /></div>
+                            <div className="text-xs font-bold text-slate-500">投資</div>
+                        </div>
+                        <div className="text-lg font-bold text-slate-800">{(totalInvest/10000).toFixed(0)}<span className="text-xs">万円</span></div>
+                        <div className="text-[10px] text-rose-500 font-bold">+{(CURRENT_ASSETS_DETAIL.investment.nisa_profit/10000).toFixed(1)}万円</div>
+                    </Card>
+                </div>
+            </div>
+        );
+
+        const ClassifyView = ({ currentMonthTransactions, selectedDate, toggleShared }) => {
+            const grouped = {
+                DIRECT: currentMonthTransactions.filter(t => t.source === 'DIRECT' && t.type !== 'income'),
+                RAKUTEN: currentMonthTransactions.filter(t => t.source === 'RAKUTEN'),
+                SMBC: currentMonthTransactions.filter(t => t.source === 'SMBC'),
+                ONEBANK: currentMonthTransactions.filter(t => t.source === 'ONEBANK'),
+            };
+            return (
+                <div className="space-y-4 pb-24 animate-fade-in">
+                    <div className="bg-teal-50 border border-teal-100 p-3 rounded-xl flex items-start gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5" />
+                        <div><h4 className="font-bold text-teal-800 text-sm">かんたん仕分け ({selectedDate.getMonth() + 1}月)</h4><p className="text-xs text-teal-700">スイッチONで家計に計上、OFFで除外されます。</p></div>
+                    </div>
+                    {Object.entries(grouped).map(([key, list]) => {
+                        if (list.length === 0) return null;
+                        const source = PAYMENT_SOURCES[key];
+                        return (
+                            <Card key={key} className="mb-4">
+                                <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
+                                    <div className="flex items-center gap-2"><span className="text-lg">{source.icon}</span><span className="font-bold text-slate-700 text-sm">{source.name}</span></div>
+                                    <span className="text-xs text-slate-400">{list.length}件</span>
+                                </div>
+                                <div className="divide-y divide-slate-100">
+                                    {list.map(tx => (
+                                        <div key={tx.id} className={`p-3 flex items-center justify-between transition-colors ${!tx.isShared ? 'bg-slate-50/50 opacity-60' : ''}`}>
+                                            <div className="flex-1" onClick={() => toggleShared(tx.id)}>
+                                                <div className="flex items-center gap-1 mb-1">
+                                                    <div className="font-bold text-slate-800 text-sm">{tx.title}</div>
+                                                    {tx.source === 'SMBC' && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded">Vpass</span>}
+                                                    {tx.source === 'RAKUTEN' && <span className="text-[9px] bg-rose-100 text-rose-700 px-1 rounded">e-NAVI</span>}
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-0.5">{tx.category}・{tx.date}</div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`font-bold text-sm ${tx.isShared ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{Math.abs(tx.amount).toLocaleString()}</div>
+                                                <button onClick={() => toggleShared(tx.id)} className={`w-10 h-6 rounded-full transition-colors relative ${tx.isShared ? 'bg-teal-500' : 'bg-slate-300'}`}><div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm top-1 transition-all ${tx.isShared ? 'left-5' : 'left-1'}`} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </Card>
+                        );
+                    })}
+                    {Object.values(grouped).every(list => list.length === 0) && (
+                        <div className="text-center py-10 text-slate-400 text-sm">
+                            この月の明細はありません。<br/>CSVを取り込むか、手入力してください。
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const AnalysisView = ({
+            selectedDate, budgetConfig, isOddMonth, categoryTotals, 
+            surplus, totalSavingsPlanned, actualMonthlyIncome, 
+            totalCash, totalInvest, currentTotalAssets
+        }) => {
+            const [subTab, setSubTab] = useState('portfolio'); 
+            const pieData = [
+                { name: '夫貯金', value: CURRENT_ASSETS_DETAIL.cash.husband, fill: '#2dd4bf' },
+                { name: '妻貯金', value: CURRENT_ASSETS_DETAIL.cash.wife, fill: '#14b8a6' },
+                { name: '共同・余剰', value: CURRENT_ASSETS_DETAIL.cash.shared_surplus + (surplus > 0 ? surplus : 0), fill: '#fbbf24' },
+                { name: '車検積立', value: CURRENT_ASSETS_DETAIL.cash.car_reserve, fill: '#94a3b8' },
+                { name: 'NISA(投資)', value: totalInvest, fill: '#3b82f6' },
+            ];
+            const pieTotal = pieData.reduce((acc, item) => acc + item.value, 0);
+            const activeBudgets = budgetConfig.filter(b => !b.oddMonthOnly || isOddMonth);
+            const assetData = [
+                { name: '夫貯金', value: 40000, fill: '#2dd4bf' },
+                { name: '妻貯金', value: 70000, fill: '#14b8a6' },
+                { name: 'NISA', value: 30000, fill: '#0d9488' },
+                { name: '車検積立', value: 10000, fill: '#0f766e' },
+                { name: '余剰資金', value: surplus > 0 ? surplus : 0, fill: '#fbbf24' },
+            ];
+            const totalAssetsCreated = totalSavingsPlanned + (surplus > 0 ? surplus : 0);
+
+            return (
+                <div className="space-y-6 pb-24 animate-fade-in">
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        {['portfolio', 'budget', 'bs'].map(tab => (
+                            <button key={tab} onClick={() => setSubTab(tab)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${subTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                                {tab === 'portfolio' && '資産構成'}
+                                {tab === 'budget' && '予算管理'}
+                                {tab === 'bs' && '貸借対照表'}
+                            </button>
+                        ))}
+                    </div>
+
+                    {subTab === 'portfolio' && (
+                        <div className="space-y-4">
+                            <Card className="p-4">
+                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
+                                    <PieChart className="w-4 h-4 text-teal-600" /> 資産ポートフォリオ (現在)
+                                </h3>
+                                {pieTotal > 0 ? (
+                                    <>
+                                        <div className="h-52 w-full flex justify-center">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <RePieChart>
+                                                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                                                        {pieData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.fill} />))}
+                                                    </Pie>
+                                                    <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                </RePieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            {pieData.map((entry, i) => (
+                                                <div key={i} className="flex items-center justify-between text-xs">
+                                                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.fill }}></div><span className="text-slate-600">{entry.name}</span></div>
+                                                    <span className="font-bold text-slate-700">{Math.round((entry.value / pieTotal) * 100)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="h-52 w-full flex items-center justify-center text-slate-400 text-sm">
+                                        資産データがありません
+                                    </div>
+                                )}
+                            </Card>
+
+                            <Card className="p-4">
+                                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
+                                    <BarChart3 className="w-4 h-4 text-blue-500" /> 長期資産推移 (現金 vs 投資)
+                                </h3>
+                                <div className="h-52 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', cash: totalCash, invest: totalInvest, total: currentTotalAssets }]} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                            <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
+                                            <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none' }} />
+                                            <Area type="monotone" dataKey="cash" stackId="1" stroke="#2dd4bf" fill="#2dd4bf" name="現金" />
+                                            <Area type="monotone" dataKey="invest" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="投資" />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </Card>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <Card className="p-3 bg-blue-50 border-blue-100">
+                                    <div className="text-[10px] font-bold text-blue-600 mb-1 flex items-center gap-1"><Target className="w-3 h-3"/> NISA 運用益率</div>
+                                    <div className="text-xl font-extrabold text-slate-800">+11.8<span className="text-sm font-normal text-slate-500">%</span></div>
+                                    <div className="text-[10px] text-slate-500 mt-1">含み益 +6.0万円</div>
+                                </Card>
+                                <Card className="p-3 bg-teal-50 border-teal-100">
+                                    <div className="text-[10px] font-bold text-teal-600 mb-1 flex items-center gap-1"><Percent className="w-3 h-3"/> 今月の貯蓄率</div>
+                                    <div className="text-xl font-extrabold text-slate-800">
+                                        {actualMonthlyIncome > 0 ? Math.round((totalAssetsCreated / actualMonthlyIncome) * 100) : 0}
+                                        <span className="text-sm font-normal text-slate-500">%</span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 mt-1">目標30% / 実績</div>
+                                </Card>
+                            </div>
+                        </div>
+                    )}
+
+                    {subTab === 'budget' && (
+                        <div>
+                            <div className="mb-3 text-center text-xs font-bold text-slate-500">
+                                {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の予算
+                            </div>
+                            <Card className="divide-y divide-slate-100">
+                                {activeBudgets.map(budget => {
+                                    const current = categoryTotals[budget.name] || 0;
+                                    const remaining = budget.amount - current;
+                                    const isOver = remaining < 0;
+                                    return (
+                                        <div key={budget.id} className="p-4">
+                                            <div className="flex justify-between items-end mb-2">
+                                                <span className="font-bold text-slate-800 text-sm">{budget.name}</span>
+                                                <span className={`font-bold text-sm ${isOver ? 'text-rose-500' : 'text-slate-500'}`}>{current.toLocaleString()} <span className="text-[10px] font-normal">/ {budget.amount.toLocaleString()}</span></span>
+                                            </div>
+                                            <ProgressBar current={current} max={budget.amount} colorClass={budget.type === 'fixed' ? 'bg-slate-400' : 'bg-teal-500'} />
+                                            <div className="flex justify-between mt-1 text-[10px]">
+                                                <span className="text-slate-400">{isOddMonth && budget.oddMonthOnly ? '(奇数月計上)' : ''}</span>
+                                                <span className={`font-bold ${isOver ? 'text-rose-500' : 'text-teal-600'}`}>{isOver ? `Over ${Math.abs(remaining).toLocaleString()}` : `あと ${remaining.toLocaleString()}`}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </Card>
+                        </div>
+                    )}
+                    
+                    {subTab === 'bs' && (
+                        <div>
+                            <div className="mb-3 text-center text-xs font-bold text-slate-500">
+                                {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の貸借対照表
+                            </div>
+                            <Card className="p-1 mb-4">
+                                <div className="flex w-full min-h-[300px] gap-1">
+                                    <div className="w-1/2 flex flex-col gap-1">
+                                        <div className="bg-teal-50 p-2 text-center text-teal-800 font-bold text-xs rounded-t-lg">資産の増加</div>
+                                        <div className="flex-1 flex flex-col gap-0.5 bg-slate-100 rounded-b-lg overflow-hidden p-1">
+                                            {totalAssetsCreated > 0 ? (
+                                                assetData.map((asset, idx) => (
+                                                    <div key={idx} className="w-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm" style={{ height: `${(asset.value / totalAssetsCreated) * 100}%`, backgroundColor: asset.fill, minHeight: '20px' }}>{asset.name}</div>
+                                                ))
+                                            ) : (
+                                                <div className="flex-1 flex items-center justify-center text-slate-400 text-xs">データなし</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="w-1/2 flex flex-col gap-1">
+                                        <div className="bg-blue-50 p-2 text-center text-blue-800 font-bold text-xs rounded-t-lg">純収入</div>
+                                        <div className="flex-1 bg-blue-500 rounded-b-lg flex flex-col items-center justify-center text-white p-2">
+                                            <div className="text-xl font-extrabold">+{totalAssetsCreated.toLocaleString()}</div>
+                                            <div className="text-[10px]">家計黒字額</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+                            <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500">
+                                <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">確実な貯金</div>{INITIAL_SAVINGS_CONFIG.map(s => <div key={s.id} className="flex justify-between"><span>{s.name}</span><span>{s.amount/10000}万</span></div>)}</div>
+                                <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">余剰資金</div><div className="flex justify-between"><span>合計</span><span>{(surplus/10000).toFixed(1)}万</span></div></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const SettingsView = ({
+            contributions, setContributions, handleIncomeAdd, 
+            selectedDate, handleCsvAdd, handleClearData
+        }) => {
+            const [vpassStatus, setVpassStatus] = useState('idle');
+            const [rakutenStatus, setRakutenStatus] = useState('idle');
+            const [vpassCount, setVpassCount] = useState(0);
+            const [rakutenCount, setRakutenCount] = useState(0);
+            
+            const vpassInputRef = useRef(null);
+            const rakutenInputRef = useRef(null);
+
+            // CSV行を分割する（クォート対応）
+            const parseCSVLine = (line) => {
+                const result = [];
+                let startValue = 0;
+                let inQuotes = false;
+                for (let i = 0; i < line.length; i++) {
+                    if (line[i] === '"') inQuotes = !inQuotes;
+                    else if (line[i] === ',' && !inQuotes) {
+                        let val = line.substring(startValue, i).trim();
+                        if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+                        result.push(val);
+                        startValue = i + 1;
+                    }
+                }
+                let lastVal = line.substring(startValue).trim();
+                if (lastVal.startsWith('"') && lastVal.endsWith('"')) lastVal = lastVal.slice(1, -1);
+                result.push(lastVal);
+                return result;
+            };
+
+            const handleFileRead = (e, type) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const setStatus = type === 'SMBC' ? setVpassStatus : setRakutenStatus;
+                const setCount = type === 'SMBC' ? setVpassCount : setRakutenCount;
+                setStatus('processing');
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const text = event.target.result;
+                        const lines = text.split(/\r\n|\n/);
+                        const newTransactions = [];
+                        
+                        // ヘッダー行を探す（簡易的）
+                        let dataStartIndex = 0;
+                        
+                        // 各行を解析
+                        lines.forEach((line, index) => {
+                            if (!line.trim()) return;
+                            const cols = parseCSVLine(line);
+                            
+                            let date = '', title = '', amount = 0;
+
+                            if (type === 'RAKUTEN') {
+                                // 楽天: 日付(0), 店名(1), 金額(4) ※一般的
+                                // ヘッダー行スキップ (日付っぽい数字でなければ)
+                                if (!cols[0].match(/^\d{4}/)) return;
+                                date = cols[0].replace(/\//g, '.');
+                                title = cols[1];
+                                amount = -Math.abs(Number(cols[4])); // 支出はマイナス
+                            } else if (type === 'SMBC') {
+                                // Vpass: 日付(0), 店名(1), 利用者(2), 支払区分(3), 割賦(4), 支払月(5), 金額(6) ※CSVの実態に合わせる
+                                // ヘッダー行スキップ
+                                if (!cols[0].match(/^\d{4}/)) return;
+                                date = cols[0].replace(/\//g, '.');
+                                title = cols[1];
+                                // 金額は列6にある
+                                amount = -Math.abs(Number(cols[6]));
+                            }
+
+                            if (date && title && amount) {
+                                newTransactions.push({
+                                    id: Date.now() + index + Math.random(),
+                                    date,
+                                    title,
+                                    category: '未分類', // 自動推測は省略
+                                    source: type,
+                                    amount,
+                                    type: 'expense',
+                                    isShared: true
+                                });
+                            }
+                        });
+
+                        if (newTransactions.length > 0) {
+                            handleCsvAdd(newTransactions);
+                            setStatus('success');
+                            setCount(newTransactions.length);
+                        } else {
+                            alert('有効なデータが見つかりませんでした。');
+                            setStatus('idle');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('CSVの読み込みに失敗しました。');
+                        setStatus('idle');
+                    }
+                };
+                // 日本のCSVはShift_JISが多い
+                reader.readAsText(file, 'Shift_JIS');
+                
+                // Inputリセット
+                e.target.value = '';
+            };
+
+            return (
+                <div className="space-y-6 pb-24 animate-fade-in">
+                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Settings className="w-5 h-5" /> 設定</h3>
+                    
+                    <Card className="p-6 border-emerald-100 bg-emerald-50/30">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><FileText className="w-5 h-5" /></div>
+                            <div><h4 className="font-bold text-slate-800">三井住友カード (Vpass)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
+                        </div>
+                        <input 
+                            type="file" 
+                            ref={vpassInputRef}
+                            className="hidden"
+                            accept=".csv"
+                            onChange={(e) => handleFileRead(e, 'SMBC')}
+                        />
+                        <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={() => vpassInputRef.current.click()}>
+                            {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
+                            {vpassStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-2" /><p className="text-sm font-bold text-emerald-600">読み込み中...</p></div>)}
+                            {vpassStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" /><p className="text-sm font-bold text-emerald-600">完了！</p><p className="text-xs text-emerald-500">{vpassCount}件を追加</p></div>)}
+                        </div>
+                    </Card>
+
+                    <Card className="p-6 border-rose-100 bg-rose-50/30">
+                        <div className="flex items-center gap-2 mb-4">
+                            <div className="p-2 bg-rose-100 rounded-full text-rose-600"><ShoppingBag className="w-5 h-5" /></div>
+                            <div><h4 className="font-bold text-slate-800">楽天カード (e-NAVI)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
+                        </div>
+                        <input 
+                            type="file" 
+                            ref={rakutenInputRef}
+                            className="hidden"
+                            accept=".csv"
+                            onChange={(e) => handleFileRead(e, 'RAKUTEN')}
+                        />
+                        <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={() => rakutenInputRef.current.click()}>
+                            {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
+                            {rakutenStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mb-2" /><p className="text-sm font-bold text-rose-600">読み込み中...</p></div>)}
+                            {rakutenStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-rose-500 mb-2" /><p className="text-sm font-bold text-rose-600">完了！</p><p className="text-xs text-rose-500">{rakutenCount}件を追加</p></div>)}
+                        </div>
+                    </Card>
+
+                    <Card className="p-6">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">収入設定 (目安)</h4>
+                        <div className="space-y-6">
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-slate-600 text-sm">夫の入金額</span>
+                                    <input type="number" value={contributions.husband} onChange={e => setContributions({...contributions, husband: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
+                                </div>
+                                <button onClick={() => handleIncomeAdd('husband', contributions.husband)} className="w-full py-2 bg-teal-50 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-100 transition-colors flex items-center justify-center gap-1">
+                                    <Save className="w-3 h-3" /> {selectedDate.getMonth() + 1}月の収入として登録
+                                </button>
+                            </div>
+                            
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-slate-600 text-sm">妻の入金額</span>
+                                    <input type="number" value={contributions.wife} onChange={e => setContributions({...contributions, wife: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
+                                </div>
+                                <button onClick={() => handleIncomeAdd('wife', contributions.wife)} className="w-full py-2 bg-teal-50 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-100 transition-colors flex items-center justify-center gap-1">
+                                    <Save className="w-3 h-3" /> {selectedDate.getMonth() + 1}月の収入として登録
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-2">※月によって入金額が異なる場合は、金額を変更して「登録」ボタンを押してください。</p>
+                        </div>
+                    </Card>
+
+                    <Card className="p-6 border-slate-200 bg-slate-50">
+                        <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">データ管理</h4>
+                        <button onClick={handleClearData} className="w-full py-3 bg-white border border-slate-300 text-slate-600 text-xs font-bold rounded-lg hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors flex items-center justify-center gap-2">
+                            <Trash2 className="w-4 h-4" /> データを全消去して初期化
+                        </button>
+                    </Card>
                 </div>
             );
         };
@@ -309,500 +817,6 @@
                 setSelectedDate(newDate);
             };
 
-            const HomeView = () => (
-                <div className="space-y-6 pb-24 animate-fade-in">
-                    <div className="text-center py-6 bg-white rounded-b-3xl shadow-sm border-b border-slate-100 -mt-4 mx-[-16px] px-4 relative overflow-hidden">
-                        <div className="relative z-10">
-                            <div className="text-xs font-bold text-slate-500 mb-2 flex items-center justify-center gap-2">
-                            <Landmark className="w-4 h-4 text-teal-600" /> 総資産額 (現在)
-                            </div>
-                            <div className="text-4xl font-extrabold text-slate-800 tracking-tight">
-                            {(currentTotalAssets / 10000).toFixed(0)}<span className="text-xl">万円</span>
-                            </div>
-                            <div className="mt-3 flex justify-center gap-2">
-                                <span className="text-[10px] bg-teal-50 text-teal-700 px-2 py-1 rounded-full border border-teal-100 font-bold flex items-center">
-                                開始比 +{(growthSinceStart/10000).toFixed(1)}万円 <TrendingUp className="w-3 h-3 ml-1"/>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <Card className="bg-slate-800 text-white p-4 relative overflow-hidden border-slate-700 mt-2">
-                        <div className="relative z-10">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <div className="text-xs text-slate-400 font-bold mb-1 flex items-center gap-2">
-                                        <Calendar className="w-3 h-3" />
-                                        {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の余剰資金
-                                    </div>
-                                    <div className="text-2xl font-extrabold text-amber-400">
-                                        {surplus > 0 ? '+' : ''}{surplus.toLocaleString()}<span className="text-xs text-slate-400 font-normal ml-1">円</span>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-[10px] text-slate-400 mb-1">予算進捗</div>
-                                    <div className={`text-lg font-bold ${(currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) > 1 ? 'text-rose-400' : 'text-teal-400'}`}>
-                                        {actualMonthlyIncome - totalSavingsPlanned > 0 
-                                            ? Math.round((currentTotalExpenses / (actualMonthlyIncome - totalSavingsPlanned)) * 100)
-                                            : '--'}%
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between text-xs text-slate-300">
-                                <span>収入: {actualMonthlyIncome.toLocaleString()}</span>
-                                <span>支出: {currentTotalExpenses.toLocaleString()}</span>
-                            </div>
-                        </div>
-                    </Card>
-
-                    <Card className="p-4 cursor-pointer hover:bg-slate-50 transition-colors group" onClick={handleGoToPortfolio}>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-teal-600" /> 資産の推移
-                            </h3>
-                            <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-teal-500 transition-colors" />
-                        </div>
-                        <div className="h-40 w-full pointer-events-none">
-                            <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', total: currentTotalAssets }]} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
-                                <defs>
-                                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.1}/>
-                                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0}/>
-                                </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
-                                <Area type="monotone" dataKey="total" stroke="#0d9488" strokeWidth={2} fillOpacity={1} fill="url(#colorTotal)" />
-                            </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </Card>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <Card className="p-4" onClick={handleGoToPortfolio}>
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="p-1.5 bg-teal-100 text-teal-600 rounded-full"><PiggyBank className="w-4 h-4" /></div>
-                                <div className="text-xs font-bold text-slate-500">現金</div>
-                            </div>
-                            <div className="text-lg font-bold text-slate-800">{(totalCash/10000).toFixed(0)}<span className="text-xs">万円</span></div>
-                            <div className="text-[10px] text-slate-400">生活防衛資金</div>
-                        </Card>
-                        <Card className="p-4" onClick={handleGoToPortfolio}>
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="p-1.5 bg-blue-100 text-blue-600 rounded-full"><TrendingUp className="w-4 h-4" /></div>
-                                <div className="text-xs font-bold text-slate-500">投資</div>
-                            </div>
-                            <div className="text-lg font-bold text-slate-800">{(totalInvest/10000).toFixed(0)}<span className="text-xs">万円</span></div>
-                            <div className="text-[10px] text-rose-500 font-bold">+{(CURRENT_ASSETS_DETAIL.investment.nisa_profit/10000).toFixed(1)}万円</div>
-                        </Card>
-                    </div>
-                </div>
-            );
-
-            const AnalysisView = () => {
-                const [subTab, setSubTab] = useState('portfolio'); 
-                const pieData = [
-                    { name: '夫貯金', value: CURRENT_ASSETS_DETAIL.cash.husband, fill: '#2dd4bf' },
-                    { name: '妻貯金', value: CURRENT_ASSETS_DETAIL.cash.wife, fill: '#14b8a6' },
-                    { name: '共同・余剰', value: CURRENT_ASSETS_DETAIL.cash.shared_surplus + (surplus > 0 ? surplus : 0), fill: '#fbbf24' },
-                    { name: '車検積立', value: CURRENT_ASSETS_DETAIL.cash.car_reserve, fill: '#94a3b8' },
-                    { name: 'NISA(投資)', value: totalInvest, fill: '#3b82f6' },
-                ];
-                const pieTotal = pieData.reduce((acc, item) => acc + item.value, 0);
-                const activeBudgets = budgetConfig.filter(b => !b.oddMonthOnly || isOddMonth);
-                const assetData = [
-                    { name: '夫貯金', value: 40000, fill: '#2dd4bf' },
-                    { name: '妻貯金', value: 70000, fill: '#14b8a6' },
-                    { name: 'NISA', value: 30000, fill: '#0d9488' },
-                    { name: '車検積立', value: 10000, fill: '#0f766e' },
-                    { name: '余剰資金', value: surplus > 0 ? surplus : 0, fill: '#fbbf24' },
-                ];
-                const totalAssetsCreated = totalSavingsPlanned + (surplus > 0 ? surplus : 0);
-
-                return (
-                    <div className="space-y-6 pb-24 animate-fade-in">
-                        <div className="flex bg-slate-100 p-1 rounded-lg">
-                            {['portfolio', 'budget', 'bs'].map(tab => (
-                                <button key={tab} onClick={() => setSubTab(tab)} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${subTab === tab ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-                                    {tab === 'portfolio' && '資産構成'}
-                                    {tab === 'budget' && '予算管理'}
-                                    {tab === 'bs' && '貸借対照表'}
-                                </button>
-                            ))}
-                        </div>
-
-                        {subTab === 'portfolio' && (
-                            <div className="space-y-4">
-                                <Card className="p-4">
-                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-                                        <PieChart className="w-4 h-4 text-teal-600" /> 資産ポートフォリオ (現在)
-                                    </h3>
-                                    {pieTotal > 0 ? (
-                                        <>
-                                            <div className="h-52 w-full flex justify-center">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <RePieChart>
-                                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
-                                                            {pieData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.fill} />))}
-                                                        </Pie>
-                                                        <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                    </RePieChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2 mt-2">
-                                                {pieData.map((entry, i) => (
-                                                    <div key={i} className="flex items-center justify-between text-xs">
-                                                        <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.fill }}></div><span className="text-slate-600">{entry.name}</span></div>
-                                                        <span className="font-bold text-slate-700">{Math.round((entry.value / pieTotal) * 100)}%</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="h-52 w-full flex items-center justify-center text-slate-400 text-sm">
-                                            資産データがありません
-                                        </div>
-                                    )}
-                                </Card>
-
-                                <Card className="p-4">
-                                    <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-                                        <BarChart3 className="w-4 h-4 text-blue-500" /> 長期資産推移 (現金 vs 投資)
-                                    </h3>
-                                    <div className="h-52 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={[...ASSET_HISTORY_DETAILED, { month: '現在', cash: totalCash, invest: totalInvest, total: currentTotalAssets }]} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fill: '#94a3b8'}} tickFormatter={(val) => `${(val/10000).toFixed(0)}`} />
-                                                <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none' }} />
-                                                <Area type="monotone" dataKey="cash" stackId="1" stroke="#2dd4bf" fill="#2dd4bf" name="現金" />
-                                                <Area type="monotone" dataKey="invest" stackId="1" stroke="#3b82f6" fill="#3b82f6" name="投資" />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </Card>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Card className="p-3 bg-blue-50 border-blue-100">
-                                        <div className="text-[10px] font-bold text-blue-600 mb-1 flex items-center gap-1"><Target className="w-3 h-3"/> NISA 運用益率</div>
-                                        <div className="text-xl font-extrabold text-slate-800">+11.8<span className="text-sm font-normal text-slate-500">%</span></div>
-                                        <div className="text-[10px] text-slate-500 mt-1">含み益 +6.0万円</div>
-                                    </Card>
-                                    <Card className="p-3 bg-teal-50 border-teal-100">
-                                        <div className="text-[10px] font-bold text-teal-600 mb-1 flex items-center gap-1"><Percent className="w-3 h-3"/> 今月の貯蓄率</div>
-                                        <div className="text-xl font-extrabold text-slate-800">
-                                            {actualMonthlyIncome > 0 ? Math.round((totalAssetsCreated / actualMonthlyIncome) * 100) : 0}
-                                            <span className="text-sm font-normal text-slate-500">%</span>
-                                        </div>
-                                        <div className="text-[10px] text-slate-500 mt-1">目標30% / 実績</div>
-                                    </Card>
-                                </div>
-                            </div>
-                        )}
-
-                        {subTab === 'budget' && (
-                            <div>
-                                <div className="mb-3 text-center text-xs font-bold text-slate-500">
-                                    {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の予算
-                                </div>
-                                <Card className="divide-y divide-slate-100">
-                                    {activeBudgets.map(budget => {
-                                        const current = categoryTotals[budget.name] || 0;
-                                        const remaining = budget.amount - current;
-                                        const isOver = remaining < 0;
-                                        return (
-                                            <div key={budget.id} className="p-4">
-                                                <div className="flex justify-between items-end mb-2">
-                                                    <span className="font-bold text-slate-800 text-sm">{budget.name}</span>
-                                                    <span className={`font-bold text-sm ${isOver ? 'text-rose-500' : 'text-slate-500'}`}>{current.toLocaleString()} <span className="text-[10px] font-normal">/ {budget.amount.toLocaleString()}</span></span>
-                                                </div>
-                                                <ProgressBar current={current} max={budget.amount} colorClass={budget.type === 'fixed' ? 'bg-slate-400' : 'bg-teal-500'} />
-                                                <div className="flex justify-between mt-1 text-[10px]">
-                                                    <span className="text-slate-400">{isOddMonth && budget.oddMonthOnly ? '(奇数月計上)' : ''}</span>
-                                                    <span className={`font-bold ${isOver ? 'text-rose-500' : 'text-teal-600'}`}>{isOver ? `Over ${Math.abs(remaining).toLocaleString()}` : `あと ${remaining.toLocaleString()}`}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </Card>
-                            </div>
-                        )}
-                        
-                        {subTab === 'bs' && (
-                            <div>
-                                <div className="mb-3 text-center text-xs font-bold text-slate-500">
-                                    {selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月の貸借対照表
-                                </div>
-                                <Card className="p-1 mb-4">
-                                    <div className="flex w-full min-h-[300px] gap-1">
-                                        <div className="w-1/2 flex flex-col gap-1">
-                                            <div className="bg-teal-50 p-2 text-center text-teal-800 font-bold text-xs rounded-t-lg">資産の増加</div>
-                                            <div className="flex-1 flex flex-col gap-0.5 bg-slate-100 rounded-b-lg overflow-hidden p-1">
-                                                {totalAssetsCreated > 0 ? (
-                                                    assetData.map((asset, idx) => (
-                                                        <div key={idx} className="w-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm" style={{ height: `${(asset.value / totalAssetsCreated) * 100}%`, backgroundColor: asset.fill, minHeight: '20px' }}>{asset.name}</div>
-                                                    ))
-                                                ) : (
-                                                    <div className="flex-1 flex items-center justify-center text-slate-400 text-xs">データなし</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="w-1/2 flex flex-col gap-1">
-                                            <div className="bg-blue-50 p-2 text-center text-blue-800 font-bold text-xs rounded-t-lg">純収入</div>
-                                            <div className="flex-1 bg-blue-500 rounded-b-lg flex flex-col items-center justify-center text-white p-2">
-                                                <div className="text-xl font-extrabold">+{totalAssetsCreated.toLocaleString()}</div>
-                                                <div className="text-[10px]">家計黒字額</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Card>
-                                <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500">
-                                    <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">確実な貯金</div>{INITIAL_SAVINGS_CONFIG.map(s => <div key={s.id} className="flex justify-between"><span>{s.name}</span><span>{s.amount/10000}万</span></div>)}</div>
-                                    <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">余剰資金</div><div className="flex justify-between"><span>合計</span><span>{(surplus/10000).toFixed(1)}万</span></div></div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
-            const ClassifyView = () => {
-                const grouped = {
-                    DIRECT: currentMonthTransactions.filter(t => t.source === 'DIRECT' && t.type !== 'income'),
-                    RAKUTEN: currentMonthTransactions.filter(t => t.source === 'RAKUTEN'),
-                    SMBC: currentMonthTransactions.filter(t => t.source === 'SMBC'),
-                    ONEBANK: currentMonthTransactions.filter(t => t.source === 'ONEBANK'),
-                };
-                return (
-                    <div className="space-y-4 pb-24 animate-fade-in">
-                        <div className="bg-teal-50 border border-teal-100 p-3 rounded-xl flex items-start gap-3">
-                            <CheckCircle2 className="w-5 h-5 text-teal-600 mt-0.5" />
-                            <div><h4 className="font-bold text-teal-800 text-sm">かんたん仕分け ({selectedDate.getMonth() + 1}月)</h4><p className="text-xs text-teal-700">スイッチONで家計に計上、OFFで除外されます。</p></div>
-                        </div>
-                        {Object.entries(grouped).map(([key, list]) => {
-                            if (list.length === 0) return null;
-                            const source = PAYMENT_SOURCES[key];
-                            return (
-                                <Card key={key} className="mb-4">
-                                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-                                        <div className="flex items-center gap-2"><span className="text-lg">{source.icon}</span><span className="font-bold text-slate-700 text-sm">{source.name}</span></div>
-                                        <span className="text-xs text-slate-400">{list.length}件</span>
-                                    </div>
-                                    <div className="divide-y divide-slate-100">
-                                        {list.map(tx => (
-                                            <div key={tx.id} className={`p-3 flex items-center justify-between transition-colors ${!tx.isShared ? 'bg-slate-50/50 opacity-60' : ''}`}>
-                                                <div className="flex-1" onClick={() => toggleShared(tx.id)}>
-                                                    <div className="flex items-center gap-1 mb-1">
-                                                        <div className="font-bold text-slate-800 text-sm">{tx.title}</div>
-                                                        {tx.source === 'SMBC' && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded">Vpass</span>}
-                                                        {tx.source === 'RAKUTEN' && <span className="text-[9px] bg-rose-100 text-rose-700 px-1 rounded">e-NAVI</span>}
-                                                    </div>
-                                                    <div className="text-xs text-slate-500 mt-0.5">{tx.category}・{tx.date}</div>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`font-bold text-sm ${tx.isShared ? 'text-slate-800' : 'text-slate-400 line-through'}`}>{Math.abs(tx.amount).toLocaleString()}</div>
-                                                    <button onClick={() => toggleShared(tx.id)} className={`w-10 h-6 rounded-full transition-colors relative ${tx.isShared ? 'bg-teal-500' : 'bg-slate-300'}`}><div className={`absolute w-4 h-4 bg-white rounded-full shadow-sm top-1 transition-all ${tx.isShared ? 'left-5' : 'left-1'}`} /></button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </Card>
-                            );
-                        })}
-                        {Object.values(grouped).every(list => list.length === 0) && (
-                            <div className="text-center py-10 text-slate-400 text-sm">
-                                この月の明細はありません。<br/>CSVを取り込むか、手入力してください。
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
-            const SettingsView = () => {
-                const [vpassStatus, setVpassStatus] = useState('idle');
-                const [rakutenStatus, setRakutenStatus] = useState('idle');
-                const [vpassCount, setVpassCount] = useState(0);
-                const [rakutenCount, setRakutenCount] = useState(0);
-                
-                const vpassInputRef = useRef(null);
-                const rakutenInputRef = useRef(null);
-
-                // CSV行を分割する（クォート対応）
-                const parseCSVLine = (line) => {
-                    const result = [];
-                    let startValue = 0;
-                    let inQuotes = false;
-                    for (let i = 0; i < line.length; i++) {
-                        if (line[i] === '"') inQuotes = !inQuotes;
-                        else if (line[i] === ',' && !inQuotes) {
-                            let val = line.substring(startValue, i).trim();
-                            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-                            result.push(val);
-                            startValue = i + 1;
-                        }
-                    }
-                    let lastVal = line.substring(startValue).trim();
-                    if (lastVal.startsWith('"') && lastVal.endsWith('"')) lastVal = lastVal.slice(1, -1);
-                    result.push(lastVal);
-                    return result;
-                };
-
-                const handleFileRead = (e, type) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    const setStatus = type === 'SMBC' ? setVpassStatus : setRakutenStatus;
-                    const setCount = type === 'SMBC' ? setVpassCount : setRakutenCount;
-                    setStatus('processing');
-
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        try {
-                            const text = event.target.result;
-                            const lines = text.split(/\r\n|\n/);
-                            const newTransactions = [];
-                            
-                            // ヘッダー行を探す（簡易的）
-                            let dataStartIndex = 0;
-                            
-                            // 各行を解析
-                            lines.forEach((line, index) => {
-                                if (!line.trim()) return;
-                                const cols = parseCSVLine(line);
-                                
-                                let date = '', title = '', amount = 0;
-
-                                if (type === 'RAKUTEN') {
-                                    // 楽天: 日付(0), 店名(1), 金額(4) ※一般的
-                                    // ヘッダー行スキップ (日付っぽい数字でなければ)
-                                    if (!cols[0].match(/^\d{4}/)) return;
-                                    date = cols[0].replace(/\//g, '.');
-                                    title = cols[1];
-                                    amount = -Math.abs(Number(cols[4])); // 支出はマイナス
-                                } else if (type === 'SMBC') {
-                                    // Vpass: 日付(0), 店名(1), 金額(2) ※一般的
-                                    if (!cols[0].match(/^\d{4}/)) return;
-                                    date = cols[0].replace(/\//g, '.');
-                                    title = cols[1];
-                                    amount = -Math.abs(Number(cols[2]));
-                                }
-
-                                if (date && title && amount) {
-                                    newTransactions.push({
-                                        id: Date.now() + index + Math.random(),
-                                        date,
-                                        title,
-                                        category: '未分類', // 自動推測は省略
-                                        source: type,
-                                        amount,
-                                        type: 'expense',
-                                        isShared: true
-                                    });
-                                }
-                            });
-
-                            if (newTransactions.length > 0) {
-                                handleCsvAdd(newTransactions);
-                                setStatus('success');
-                                setCount(newTransactions.length);
-                            } else {
-                                alert('有効なデータが見つかりませんでした。');
-                                setStatus('idle');
-                            }
-                        } catch (err) {
-                            console.error(err);
-                            alert('CSVの読み込みに失敗しました。');
-                            setStatus('idle');
-                        }
-                    };
-                    // 日本のCSVはShift_JISが多い
-                    reader.readAsText(file, 'Shift_JIS');
-                    
-                    // Inputリセット
-                    e.target.value = '';
-                };
-
-                return (
-                    <div className="space-y-6 pb-24 animate-fade-in">
-                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Settings className="w-5 h-5" /> 設定</h3>
-                        
-                        <Card className="p-6 border-emerald-100 bg-emerald-50/30">
-                            <div className="flex items-center gap-2 mb-4">
-                                <div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><FileText className="w-5 h-5" /></div>
-                                <div><h4 className="font-bold text-slate-800">三井住友カード (Vpass)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
-                            </div>
-                            <input 
-                                type="file" 
-                                ref={vpassInputRef}
-                                className="hidden"
-                                accept=".csv"
-                                onChange={(e) => handleFileRead(e, 'SMBC')}
-                            />
-                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={() => vpassInputRef.current.click()}>
-                                {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
-                                {vpassStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-2" /><p className="text-sm font-bold text-emerald-600">読み込み中...</p></div>)}
-                                {vpassStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" /><p className="text-sm font-bold text-emerald-600">完了！</p><p className="text-xs text-emerald-500">{vpassCount}件を追加</p></div>)}
-                            </div>
-                        </Card>
-
-                        <Card className="p-6 border-rose-100 bg-rose-50/30">
-                            <div className="flex items-center gap-2 mb-4">
-                                <div className="p-2 bg-rose-100 rounded-full text-rose-600"><ShoppingBag className="w-5 h-5" /></div>
-                                <div><h4 className="font-bold text-slate-800">楽天カード (e-NAVI)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
-                            </div>
-                            <input 
-                                type="file" 
-                                ref={rakutenInputRef}
-                                className="hidden"
-                                accept=".csv"
-                                onChange={(e) => handleFileRead(e, 'RAKUTEN')}
-                            />
-                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={() => rakutenInputRef.current.click()}>
-                                {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
-                                {rakutenStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mb-2" /><p className="text-sm font-bold text-rose-600">読み込み中...</p></div>)}
-                                {rakutenStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-rose-500 mb-2" /><p className="text-sm font-bold text-rose-600">完了！</p><p className="text-xs text-rose-500">{rakutenCount}件を追加</p></div>)}
-                            </div>
-                        </Card>
-
-                        <Card className="p-6">
-                            <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">収入設定 (目安)</h4>
-                            <div className="space-y-6">
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="font-bold text-slate-600 text-sm">夫の入金額</span>
-                                        <input type="number" value={contributions.husband} onChange={e => setContributions({...contributions, husband: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
-                                    </div>
-                                    <button onClick={() => handleIncomeAdd('husband', contributions.husband)} className="w-full py-2 bg-teal-50 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-100 transition-colors flex items-center justify-center gap-1">
-                                        <Save className="w-3 h-3" /> {selectedDate.getMonth() + 1}月の収入として登録
-                                    </button>
-                                </div>
-                                
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="font-bold text-slate-600 text-sm">妻の入金額</span>
-                                        <input type="number" value={contributions.wife} onChange={e => setContributions({...contributions, wife: Number(e.target.value)})} className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" />
-                                    </div>
-                                    <button onClick={() => handleIncomeAdd('wife', contributions.wife)} className="w-full py-2 bg-teal-50 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-100 transition-colors flex items-center justify-center gap-1">
-                                        <Save className="w-3 h-3" /> {selectedDate.getMonth() + 1}月の収入として登録
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mt-2">※月によって入金額が異なる場合は、金額を変更して「登録」ボタンを押してください。</p>
-                            </div>
-                        </Card>
-
-                        <Card className="p-6 border-slate-200 bg-slate-50">
-                            <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">データ管理</h4>
-                            <button onClick={handleClearData} className="w-full py-3 bg-white border border-slate-300 text-slate-600 text-xs font-bold rounded-lg hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors flex items-center justify-center gap-2">
-                                <Trash2 className="w-4 h-4" /> データを全消去して初期化
-                            </button>
-                        </Card>
-                    </div>
-                );
-            };
-
             return (
                 <div className="min-h-screen bg-[#f0f9f6] font-sans text-slate-800 relative">
                     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3">
@@ -824,10 +838,43 @@
                     </header>
 
                     <main className="max-w-md mx-auto p-4">
-                        {activeTab === 'home' && <HomeView />}
-                        {activeTab === 'classify' && <ClassifyView />}
-                        {activeTab === 'analysis' && <AnalysisView />}
-                        {activeTab === 'settings' && <SettingsView />}
+                        {activeTab === 'home' && <HomeView 
+                            selectedDate={selectedDate}
+                            surplus={surplus}
+                            currentTotalExpenses={currentTotalExpenses}
+                            actualMonthlyIncome={actualMonthlyIncome}
+                            totalSavingsPlanned={totalSavingsPlanned}
+                            currentTotalAssets={currentTotalAssets}
+                            growthSinceStart={growthSinceStart}
+                            totalCash={totalCash}
+                            totalInvest={totalInvest}
+                            handleGoToPortfolio={handleGoToPortfolio}
+                        />}
+                        {activeTab === 'classify' && <ClassifyView 
+                            currentMonthTransactions={currentMonthTransactions}
+                            selectedDate={selectedDate}
+                            toggleShared={toggleShared}
+                        />}
+                        {activeTab === 'analysis' && <AnalysisView 
+                            selectedDate={selectedDate}
+                            budgetConfig={budgetConfig}
+                            isOddMonth={isOddMonth}
+                            categoryTotals={categoryTotals}
+                            surplus={surplus}
+                            totalSavingsPlanned={totalSavingsPlanned}
+                            actualMonthlyIncome={actualMonthlyIncome}
+                            totalCash={totalCash}
+                            totalInvest={totalInvest}
+                            currentTotalAssets={currentTotalAssets}
+                        />}
+                        {activeTab === 'settings' && <SettingsView 
+                            contributions={contributions}
+                            setContributions={setContributions}
+                            handleIncomeAdd={handleIncomeAdd}
+                            selectedDate={selectedDate}
+                            handleCsvAdd={handleCsvAdd}
+                            handleClearData={handleClearData}
+                        />}
                     </main>
 
                     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe z-40">
