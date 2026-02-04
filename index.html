@@ -42,6 +42,7 @@
         
         /* モーダルなどのz-index調整 */
         .z-60 { z-index: 60; }
+        .hidden-input { display: none; }
     </style>
 </head>
 <body>
@@ -50,7 +51,8 @@
     <!-- アプリケーションコード -->
     <!-- data-type="module" と data-presets="react" を指定してBabelにESMとして処理させる -->
     <script type="text/babel" data-type="module" data-presets="react">
-        import React, { useState, useMemo, useEffect } from 'react';
+        // useRefを追加
+        import React, { useState, useMemo, useEffect, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
             Wallet, TrendingUp, Landmark, CreditCard, Menu, ArrowRight, 
@@ -196,13 +198,11 @@
             const [isModalOpen, setIsModalOpen] = useState(false);
             
             // --- データ永続化 (LocalStorage) ---
-            // 収入設定: LocalStorageから読み込む
             const [contributions, setContributions] = useState(() => {
                 const saved = localStorage.getItem(STORAGE_KEY_CONTRIBUTIONS);
                 return saved ? JSON.parse(saved) : { husband: 220000, wife: 200000 };
             });
             
-            // 取引履歴: LocalStorageから読み込む
             const [transactions, setTransactions] = useState(() => {
                 const saved = localStorage.getItem(STORAGE_KEY_TRANSACTIONS);
                 return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
@@ -210,7 +210,6 @@
 
             const [budgetConfig, setBudgetConfig] = useState(INITIAL_BUDGET_CONFIG);
 
-            // データ変更時にLocalStorageへ自動保存
             useEffect(() => {
                 localStorage.setItem(STORAGE_KEY_CONTRIBUTIONS, JSON.stringify(contributions));
             }, [contributions]);
@@ -239,7 +238,6 @@
             }, [validTransactions]);
 
             const monthlyIncomeTransactions = validTransactions.filter(t => t.type === 'income');
-            // 収入トランザクションがあればそれを使い、なければ設定値（デフォルト）を使う
             const actualMonthlyIncome = monthlyIncomeTransactions.length > 0 
                 ? monthlyIncomeTransactions.reduce((acc, t) => acc + t.amount, 0)
                 : contributions.husband + contributions.wife;
@@ -248,23 +246,11 @@
             const totalSavingsPlanned = INITIAL_SAVINGS_CONFIG.reduce((sum, s) => sum + s.amount, 0);
             const surplus = actualMonthlyIncome - currentTotalExpenses - totalSavingsPlanned;
 
-            // 履歴データがない場合の安全対策
             const lastHistoryAsset = ASSET_HISTORY_DETAILED.length > 0 
                 ? ASSET_HISTORY_DETAILED[ASSET_HISTORY_DETAILED.length - 1].total 
                 : 0;
             
-            // トランザクション全体から現在の総資産を計算するロジック（簡易版）
-            // 実際はすべての期間の収支を合計すべきだが、ここでは表示月のデータ + 過去の蓄積（デモでは0）とする
-            // 本格運用では全期間のSurplusを合計するロジックが必要だが、まずは単月ベースで動くように維持
-            // ★改善: 全期間の収支累計を計算して資産額とする
             const totalAccumulatedSurplus = useMemo(() => {
-                let total = 0;
-                // 全トランザクションを集計（入金はプラス、支出はマイナス）
-                // ただし、sharedフラグがtrueのものだけ
-                // また、固定の貯金（totalSavingsPlanned）は毎月引かれる前提だが、
-                // トランザクションベースの家計簿なので、Surplus（余剰金）の積み上げを計算するのは少し複雑。
-                // ここではシンプルに「現在の月のSurplus」を資産に加算する（デモ同様）
-                // ※ 本格的な資産推移グラフを作るには、月ごとの集計ロジックが必要
                 return surplus > 0 ? surplus : 0;
             }, [surplus]);
 
@@ -284,7 +270,12 @@
                 setTransactions(prev => [newTx, ...prev]);
             };
             
-            // 収入登録用
+            // CSV追加処理
+            const handleCsvAdd = (newTxList) => {
+                setTransactions(prev => [...newTxList, ...prev]);
+                alert(`${newTxList.length}件の明細を追加しました。`);
+            };
+            
             const handleIncomeAdd = (type, amount) => {
                 const dateStr = selectedDate.toISOString().slice(0, 10).replace(/-/g, '.');
                 const title = type === 'husband' ? '共同口座入金 (夫)' : '共同口座入金 (妻)';
@@ -635,33 +626,103 @@
                 const [rakutenStatus, setRakutenStatus] = useState('idle');
                 const [vpassCount, setVpassCount] = useState(0);
                 const [rakutenCount, setRakutenCount] = useState(0);
+                
+                const vpassInputRef = useRef(null);
+                const rakutenInputRef = useRef(null);
 
-                const handleVpassFile = () => {
-                    setVpassStatus('processing');
-                    setTimeout(() => {
-                        const newTransactions = [
-                            { id: Date.now() + 1, date: '2026.01.29', title: 'スターバックス', category: '外食費', source: 'SMBC', amount: -650, type: 'expense', isShared: true },
-                            { id: Date.now() + 2, date: '2026.01.28', title: 'ユニクロ', category: '生活用品', source: 'SMBC', amount: -4990, type: 'expense', isShared: true },
-                        ];
-                        setTransactions(prev => [...newTransactions, ...prev]);
-                        setVpassStatus('success');
-                        setVpassCount(newTransactions.length);
-                        setTimeout(() => setVpassStatus('idle'), 3000);
-                    }, 1500);
+                // CSV行を分割する（クォート対応）
+                const parseCSVLine = (line) => {
+                    const result = [];
+                    let startValue = 0;
+                    let inQuotes = false;
+                    for (let i = 0; i < line.length; i++) {
+                        if (line[i] === '"') inQuotes = !inQuotes;
+                        else if (line[i] === ',' && !inQuotes) {
+                            let val = line.substring(startValue, i).trim();
+                            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+                            result.push(val);
+                            startValue = i + 1;
+                        }
+                    }
+                    let lastVal = line.substring(startValue).trim();
+                    if (lastVal.startsWith('"') && lastVal.endsWith('"')) lastVal = lastVal.slice(1, -1);
+                    result.push(lastVal);
+                    return result;
                 };
 
-                const handleRakutenFile = () => {
-                    setRakutenStatus('processing');
-                    setTimeout(() => {
-                        const newTransactions = [
-                            { id: Date.now() + 10, date: '2026.01.25', title: '楽天市場', category: '生活用品', source: 'RAKUTEN', amount: -3980, type: 'expense', isShared: true },
-                            { id: Date.now() + 11, date: '2026.01.24', title: 'ENEOS', category: 'ガソリン', source: 'RAKUTEN', amount: -4500, type: 'expense', isShared: true },
-                        ];
-                        setTransactions(prev => [...newTransactions, ...prev]);
-                        setRakutenStatus('success');
-                        setRakutenCount(newTransactions.length);
-                        setTimeout(() => setRakutenStatus('idle'), 3000);
-                    }, 1500);
+                const handleFileRead = (e, type) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    const setStatus = type === 'SMBC' ? setVpassStatus : setRakutenStatus;
+                    const setCount = type === 'SMBC' ? setVpassCount : setRakutenCount;
+                    setStatus('processing');
+
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        try {
+                            const text = event.target.result;
+                            const lines = text.split(/\r\n|\n/);
+                            const newTransactions = [];
+                            
+                            // ヘッダー行を探す（簡易的）
+                            let dataStartIndex = 0;
+                            
+                            // 各行を解析
+                            lines.forEach((line, index) => {
+                                if (!line.trim()) return;
+                                const cols = parseCSVLine(line);
+                                
+                                let date = '', title = '', amount = 0;
+
+                                if (type === 'RAKUTEN') {
+                                    // 楽天: 日付(0), 店名(1), 金額(4) ※一般的
+                                    // ヘッダー行スキップ (日付っぽい数字でなければ)
+                                    if (!cols[0].match(/^\d{4}/)) return;
+                                    date = cols[0].replace(/\//g, '.');
+                                    title = cols[1];
+                                    amount = -Math.abs(Number(cols[4])); // 支出はマイナス
+                                } else if (type === 'SMBC') {
+                                    // Vpass: 日付(0), 店名(1), 金額(2) ※一般的
+                                    if (!cols[0].match(/^\d{4}/)) return;
+                                    date = cols[0].replace(/\//g, '.');
+                                    title = cols[1];
+                                    amount = -Math.abs(Number(cols[2]));
+                                }
+
+                                if (date && title && amount) {
+                                    newTransactions.push({
+                                        id: Date.now() + index + Math.random(),
+                                        date,
+                                        title,
+                                        category: '未分類', // 自動推測は省略
+                                        source: type,
+                                        amount,
+                                        type: 'expense',
+                                        isShared: true
+                                    });
+                                }
+                            });
+
+                            if (newTransactions.length > 0) {
+                                handleCsvAdd(newTransactions);
+                                setStatus('success');
+                                setCount(newTransactions.length);
+                            } else {
+                                alert('有効なデータが見つかりませんでした。');
+                                setStatus('idle');
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            alert('CSVの読み込みに失敗しました。');
+                            setStatus('idle');
+                        }
+                    };
+                    // 日本のCSVはShift_JISが多い
+                    reader.readAsText(file, 'Shift_JIS');
+                    
+                    // Inputリセット
+                    e.target.value = '';
                 };
 
                 return (
@@ -673,8 +734,15 @@
                                 <div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><FileText className="w-5 h-5" /></div>
                                 <div><h4 className="font-bold text-slate-800">三井住友カード (Vpass)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
                             </div>
-                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={handleVpassFile}>
-                                {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVをドロップ</p></>)}
+                            <input 
+                                type="file" 
+                                ref={vpassInputRef}
+                                className="hidden"
+                                accept=".csv"
+                                onChange={(e) => handleFileRead(e, 'SMBC')}
+                            />
+                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={() => vpassInputRef.current.click()}>
+                                {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
                                 {vpassStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-2" /><p className="text-sm font-bold text-emerald-600">読み込み中...</p></div>)}
                                 {vpassStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" /><p className="text-sm font-bold text-emerald-600">完了！</p><p className="text-xs text-emerald-500">{vpassCount}件を追加</p></div>)}
                             </div>
@@ -685,8 +753,15 @@
                                 <div className="p-2 bg-rose-100 rounded-full text-rose-600"><ShoppingBag className="w-5 h-5" /></div>
                                 <div><h4 className="font-bold text-slate-800">楽天カード (e-NAVI)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
                             </div>
-                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={handleRakutenFile}>
-                                {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVをドロップ</p></>)}
+                            <input 
+                                type="file" 
+                                ref={rakutenInputRef}
+                                className="hidden"
+                                accept=".csv"
+                                onChange={(e) => handleFileRead(e, 'RAKUTEN')}
+                            />
+                            <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={() => rakutenInputRef.current.click()}>
+                                {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
                                 {rakutenStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mb-2" /><p className="text-sm font-bold text-rose-600">読み込み中...</p></div>)}
                                 {rakutenStatus === 'success' && (<div className="flex flex-col items-center"><CheckCircle2 className="w-8 h-8 text-rose-500 mb-2" /><p className="text-sm font-bold text-rose-600">完了！</p><p className="text-xs text-rose-500">{rakutenCount}件を追加</p></div>)}
                             </div>
