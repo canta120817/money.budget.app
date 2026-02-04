@@ -23,7 +23,10 @@
         "react-dom": "https://esm.sh/react-dom@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "lucide-react": "https://esm.sh/lucide-react@0.344.0",
-        "recharts": "https://esm.sh/recharts@2.12.3?external=react,react-dom"
+        "recharts": "https://esm.sh/recharts@2.12.3?external=react,react-dom",
+        "firebase/app": "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js",
+        "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js"
       }
     }
     </script>
@@ -58,12 +61,25 @@
             Settings, CheckCircle2, PieChart, PiggyBank, Coins, 
             LayoutGrid, ArrowLeftRight, RefreshCw, AlertTriangle, ChevronRight,
             UploadCloud, FileText, Download, Plus, X, Calendar, Tag, ShoppingBag,
-            Target, BarChart3, ArrowUpRight, Percent, ChevronLeft, Save, Trash2, Edit2
+            Target, BarChart3, ArrowUpRight, Percent, ChevronLeft, Save, Trash2, Edit2,
+            Cloud, CloudOff
         } from 'lucide-react';
         import { 
             BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
             Line, ComposedChart, AreaChart, Area, Cell, Pie, PieChart as RePieChart, Legend
         } from 'recharts';
+        
+        // Firebase Imports
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, doc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
+
+        // --- Firebase Initialization ---
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
         // --- 設定とデータ ---
 
@@ -107,10 +123,6 @@
         // 取引履歴初期化（空配列）
         const INITIAL_TRANSACTIONS = [];
 
-        // --- LocalStorage Keys ---
-        const STORAGE_KEY_TRANSACTIONS = 'family_budget_transactions_v1';
-        const STORAGE_KEY_CONTRIBUTIONS = 'family_budget_contributions_v1';
-
         // --- Components ---
 
         const Card = ({ children, className = "", onClick }) => (
@@ -129,7 +141,69 @@
             );
         };
 
-        // View Components - Extracted to prevent re-rendering issues
+        // ManualInputModal
+        const ManualInputModal = ({ isOpen, onClose, onSave, budgetConfig, defaultDate }) => {
+            const defaultDateStr = defaultDate.toISOString().slice(0, 10).replace(/-/g, '.');
+            const [formData, setFormData] = useState({ date: defaultDateStr, title: '', amount: '', category: budgetConfig[0].name, source: 'DIRECT' });
+
+            useEffect(() => { if(isOpen) setFormData(prev => ({...prev, date: defaultDateStr})); }, [isOpen, defaultDateStr]);
+
+            if (!isOpen) return null;
+
+            const handleSubmit = () => {
+                if (!formData.title || !formData.amount) return; 
+                onSave({ ...formData, amount: -Math.abs(Number(formData.amount)) });
+                setFormData({ ...formData, title: '', amount: '' }); 
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-fade-in-up">
+                        <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
+                            <h3 className="font-bold flex items-center gap-2"><Plus className="w-5 h-5" /> 手入力で追加</h3>
+                            <button onClick={onClose}><X className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> 日付</label>
+                                <input type="text" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="YYYY.MM.DD" />
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="flex-1">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><CreditCard className="w-3 h-3"/> 支払い元</label>
+                                    <select value={formData.source} onChange={(e) => setFormData({...formData, source: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
+                                        {Object.values(PAYMENT_SOURCES).map(src => (<option key={src.id} value={src.id.toUpperCase()}>{src.name}</option>))}
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Tag className="w-3 h-3"/> 項目</label>
+                                    <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
+                                        {budgetConfig.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+                                        <option value="その他">その他</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1">内容</label>
+                                <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="例: スーパーなど" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1">金額 (円)</label>
+                                <div className="relative">
+                                    <input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-4 pr-10 text-xl font-bold text-slate-800 outline-none text-right" placeholder="0" />
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">円</span>
+                                </div>
+                            </div>
+                            <button onClick={handleSubmit} className="w-full bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-700 transition-all mt-2 active:scale-95">追加する</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // View Components
 
         const HomeView = ({ 
             selectedDate, surplus, currentTotalExpenses, actualMonthlyIncome, 
@@ -177,6 +251,10 @@
                         <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between text-xs text-slate-300">
                             <span>収入: {actualMonthlyIncome.toLocaleString()}</span>
                             <span>支出: {currentTotalExpenses.toLocaleString()}</span>
+                        </div>
+                        <div className="mt-1 pt-1 border-t border-slate-700/50 flex justify-between text-xs text-slate-400">
+                            <span>貯金・積立計:</span>
+                            <span>-{totalSavingsPlanned.toLocaleString()}</span>
                         </div>
                     </div>
                 </Card>
@@ -301,25 +379,24 @@
         const AnalysisView = ({
             selectedDate, budgetConfig, isOddMonth, categoryTotals, 
             surplus, totalSavingsPlanned, actualMonthlyIncome, 
-            totalCash, totalInvest, currentTotalAssets
+            totalCash, totalInvest, currentTotalAssets, savingsConfig
         }) => {
             const [subTab, setSubTab] = useState('portfolio'); 
+            
+            // 資産構成データの生成（設定値に基づく）
             const pieData = [
-                { name: '夫貯金', value: CURRENT_ASSETS_DETAIL.cash.husband, fill: '#2dd4bf' },
-                { name: '妻貯金', value: CURRENT_ASSETS_DETAIL.cash.wife, fill: '#14b8a6' },
-                { name: '共同・余剰', value: CURRENT_ASSETS_DETAIL.cash.shared_surplus + (surplus > 0 ? surplus : 0), fill: '#fbbf24' },
-                { name: '車検積立', value: CURRENT_ASSETS_DETAIL.cash.car_reserve, fill: '#94a3b8' },
-                { name: 'NISA(投資)', value: totalInvest, fill: '#3b82f6' },
+                { name: '夫貯金', value: savingsConfig.find(s => s.id === 'hus_cash')?.amount || 0, fill: '#2dd4bf' },
+                { name: '妻貯金', value: savingsConfig.find(s => s.id === 'wife_cash')?.amount || 0, fill: '#14b8a6' },
+                { name: '共同・余剰', value: (surplus > 0 ? surplus : 0), fill: '#fbbf24' },
+                { name: '車検積立', value: savingsConfig.find(s => s.id === 'car')?.amount || 0, fill: '#94a3b8' },
+                { name: 'NISA(投資)', value: savingsConfig.find(s => s.id === 'nisa')?.amount || 0, fill: '#3b82f6' },
             ];
+            
             const pieTotal = pieData.reduce((acc, item) => acc + item.value, 0);
             const activeBudgets = budgetConfig.filter(b => !b.oddMonthOnly || isOddMonth);
-            const assetData = [
-                { name: '夫貯金', value: 40000, fill: '#2dd4bf' },
-                { name: '妻貯金', value: 70000, fill: '#14b8a6' },
-                { name: 'NISA', value: 30000, fill: '#0d9488' },
-                { name: '車検積立', value: 10000, fill: '#0f766e' },
-                { name: '余剰資金', value: surplus > 0 ? surplus : 0, fill: '#fbbf24' },
-            ];
+            
+            // 資産増加内訳
+            const assetData = pieData.filter(d => d.value > 0);
             const totalAssetsCreated = totalSavingsPlanned + (surplus > 0 ? surplus : 0);
 
             return (
@@ -338,7 +415,7 @@
                         <div className="space-y-4">
                             <Card className="p-4">
                                 <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-                                    <PieChart className="w-4 h-4 text-teal-600" /> 資産ポートフォリオ (現在)
+                                    <PieChart className="w-4 h-4 text-teal-600" /> 今月の資産内訳 (フロー)
                                 </h3>
                                 {pieTotal > 0 ? (
                                     <>
@@ -348,7 +425,7 @@
                                                     <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
                                                         {pieData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.fill} />))}
                                                     </Pie>
-                                                    <Tooltip formatter={(val) => `${(val/10000).toFixed(1)}万円`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                    <Tooltip formatter={(val) => `${val.toLocaleString()}円`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                                 </RePieChart>
                                             </ResponsiveContainer>
                                         </div>
@@ -461,7 +538,7 @@
                                 </div>
                             </Card>
                             <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-500">
-                                <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">確実な貯金</div>{INITIAL_SAVINGS_CONFIG.map(s => <div key={s.id} className="flex justify-between"><span>{s.name}</span><span>{s.amount/10000}万</span></div>)}</div>
+                                <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">確実な貯金</div>{savingsConfig.map(s => <div key={s.id} className="flex justify-between"><span>{s.name}</span><span>{s.amount/10000}万</span></div>)}</div>
                                 <div className="bg-white p-2 rounded border border-slate-100"><div className="font-bold mb-1">余剰資金</div><div className="flex justify-between"><span>合計</span><span>{(surplus/10000).toFixed(1)}万</span></div></div>
                             </div>
                         </div>
@@ -472,7 +549,9 @@
 
         const SettingsView = ({
             contributions, setContributions, handleIncomeAdd, 
-            selectedDate, handleCsvAdd, handleClearData
+            selectedDate, handleCsvAdd, handleClearData,
+            savingsConfig, setSavingsConfig,
+            saveSettingsToCloud // Add this prop
         }) => {
             const [vpassStatus, setVpassStatus] = useState('idle');
             const [rakutenStatus, setRakutenStatus] = useState('idle');
@@ -481,6 +560,20 @@
             
             const vpassInputRef = useRef(null);
             const rakutenInputRef = useRef(null);
+
+            // Debounce save for settings
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    saveSettingsToCloud(contributions, savingsConfig);
+                }, 1000);
+                return () => clearTimeout(timer);
+            }, [contributions, savingsConfig, saveSettingsToCloud]);
+
+            // 貯金設定の更新
+            const updateSavings = (id, amountStr) => {
+                const amount = Number(amountStr);
+                setSavingsConfig(prev => prev.map(s => s.id === id ? { ...s, amount } : s));
+            };
 
             // CSV行を分割する（クォート対応）
             const parseCSVLine = (line) => {
@@ -517,10 +610,8 @@
                         const lines = text.split(/\r\n|\n/);
                         const newTransactions = [];
                         
-                        // ヘッダー行を探す（簡易的）
                         let dataStartIndex = 0;
                         
-                        // 各行を解析
                         lines.forEach((line, index) => {
                             if (!line.trim()) return;
                             const cols = parseCSVLine(line);
@@ -528,19 +619,14 @@
                             let date = '', title = '', amount = 0;
 
                             if (type === 'RAKUTEN') {
-                                // 楽天: 日付(0), 店名(1), 金額(4) ※一般的
-                                // ヘッダー行スキップ (日付っぽい数字でなければ)
                                 if (!cols[0].match(/^\d{4}/)) return;
                                 date = cols[0].replace(/\//g, '.');
                                 title = cols[1];
-                                amount = -Math.abs(Number(cols[4])); // 支出はマイナス
+                                amount = -Math.abs(Number(cols[4])); 
                             } else if (type === 'SMBC') {
-                                // Vpass: 日付(0), 店名(1), 利用者(2), 支払区分(3), 割賦(4), 支払月(5), 金額(6) ※CSVの実態に合わせる
-                                // ヘッダー行スキップ
                                 if (!cols[0].match(/^\d{4}/)) return;
                                 date = cols[0].replace(/\//g, '.');
                                 title = cols[1];
-                                // 金額は列6にある
                                 amount = -Math.abs(Number(cols[6]));
                             }
 
@@ -549,7 +635,7 @@
                                     id: Date.now() + index + Math.random(),
                                     date,
                                     title,
-                                    category: '未分類', // 自動推測は省略
+                                    category: '未分類', 
                                     source: type,
                                     amount,
                                     type: 'expense',
@@ -572,10 +658,7 @@
                         setStatus('idle');
                     }
                 };
-                // 日本のCSVはShift_JISが多い
                 reader.readAsText(file, 'Shift_JIS');
-                
-                // Inputリセット
                 e.target.value = '';
             };
 
@@ -583,18 +666,13 @@
                 <div className="space-y-6 pb-24 animate-fade-in">
                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Settings className="w-5 h-5" /> 設定</h3>
                     
+                    {/* CSV Upload Cards */}
                     <Card className="p-6 border-emerald-100 bg-emerald-50/30">
                         <div className="flex items-center gap-2 mb-4">
                             <div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><FileText className="w-5 h-5" /></div>
                             <div><h4 className="font-bold text-slate-800">三井住友カード (Vpass)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
                         </div>
-                        <input 
-                            type="file" 
-                            ref={vpassInputRef}
-                            className="hidden"
-                            accept=".csv"
-                            onChange={(e) => handleFileRead(e, 'SMBC')}
-                        />
+                        <input type="file" ref={vpassInputRef} className="hidden" accept=".csv" onChange={(e) => handleFileRead(e, 'SMBC')} />
                         <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${vpassStatus === 'success' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-300 hover:border-emerald-400 hover:bg-white'}`} onClick={() => vpassInputRef.current.click()}>
                             {vpassStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
                             {vpassStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-2" /><p className="text-sm font-bold text-emerald-600">読み込み中...</p></div>)}
@@ -607,13 +685,7 @@
                             <div className="p-2 bg-rose-100 rounded-full text-rose-600"><ShoppingBag className="w-5 h-5" /></div>
                             <div><h4 className="font-bold text-slate-800">楽天カード (e-NAVI)</h4><p className="text-xs text-slate-500">CSVファイルをアップロード</p></div>
                         </div>
-                        <input 
-                            type="file" 
-                            ref={rakutenInputRef}
-                            className="hidden"
-                            accept=".csv"
-                            onChange={(e) => handleFileRead(e, 'RAKUTEN')}
-                        />
+                        <input type="file" ref={rakutenInputRef} className="hidden" accept=".csv" onChange={(e) => handleFileRead(e, 'RAKUTEN')} />
                         <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${rakutenStatus === 'success' ? 'border-rose-500 bg-rose-50' : 'border-slate-300 hover:border-rose-400 hover:bg-white'}`} onClick={() => rakutenInputRef.current.click()}>
                             {rakutenStatus === 'idle' && (<><UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-600">CSVを選択</p></>)}
                             {rakutenStatus === 'processing' && (<div className="flex flex-col items-center"><RefreshCw className="w-8 h-8 text-rose-500 animate-spin mb-2" /><p className="text-sm font-bold text-rose-600">読み込み中...</p></div>)}
@@ -621,6 +693,7 @@
                         </div>
                     </Card>
 
+                    {/* 収入設定 */}
                     <Card className="p-6">
                         <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">収入設定 (目安)</h4>
                         <div className="space-y-6">
@@ -647,6 +720,25 @@
                         </div>
                     </Card>
 
+                    {/* 固定貯金設定 */}
+                    <Card className="p-6">
+                        <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">固定貯金・積立設定 (月額)</h4>
+                        <div className="space-y-4">
+                            {savingsConfig.map(saving => (
+                                <div key={saving.id} className="flex justify-between items-center border-b border-slate-100 pb-2">
+                                    <span className="font-bold text-slate-600 text-sm">{saving.name}</span>
+                                    <input 
+                                        type="number" 
+                                        value={saving.amount} 
+                                        onChange={(e) => updateSavings(saving.id, e.target.value)} 
+                                        className="text-right bg-slate-50 p-2 rounded w-32 font-bold text-slate-800" 
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-2">※ここで設定した金額は、自動的に家計の余剰資金計算から差し引かれます。</p>
+                    </Card>
+
                     <Card className="p-6 border-slate-200 bg-slate-50">
                         <h4 className="font-bold text-slate-700 mb-2 flex items-center gap-2">データ管理</h4>
                         <button onClick={handleClearData} className="w-full py-3 bg-white border border-slate-300 text-slate-600 text-xs font-bold rounded-lg hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors flex items-center justify-center gap-2">
@@ -657,93 +749,85 @@
             );
         };
 
-        const ManualInputModal = ({ isOpen, onClose, onSave, budgetConfig, defaultDate }) => {
-            const defaultDateStr = defaultDate.toISOString().slice(0, 10).replace(/-/g, '.');
-            const [formData, setFormData] = useState({ date: defaultDateStr, title: '', amount: '', category: budgetConfig[0].name, source: 'DIRECT' });
-
-            useEffect(() => { if(isOpen) setFormData(prev => ({...prev, date: defaultDateStr})); }, [isOpen, defaultDateStr]);
-
-            if (!isOpen) return null;
-
-            const handleSubmit = () => {
-                if (!formData.title || !formData.amount) return; 
-                onSave({ ...formData, amount: -Math.abs(Number(formData.amount)) });
-                setFormData({ ...formData, title: '', amount: '' }); 
-                onClose();
-            };
-
-            return (
-                <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-fade-in-up">
-                        <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
-                            <h3 className="font-bold flex items-center gap-2"><Plus className="w-5 h-5" /> 手入力で追加</h3>
-                            <button onClick={onClose}><X className="w-6 h-6 text-slate-400" /></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Calendar className="w-3 h-3"/> 日付</label>
-                                <input type="text" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="YYYY.MM.DD" />
-                            </div>
-                            <div className="flex gap-3">
-                                <div className="flex-1">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><CreditCard className="w-3 h-3"/> 支払い元</label>
-                                    <select value={formData.source} onChange={(e) => setFormData({...formData, source: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
-                                        {Object.values(PAYMENT_SOURCES).map(src => (<option key={src.id} value={src.id.toUpperCase()}>{src.name}</option>))}
-                                    </select>
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-xs font-bold text-slate-500 mb-1 flex items-center gap-1"><Tag className="w-3 h-3"/> 項目</label>
-                                    <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-bold text-slate-700 outline-none">
-                                        {budgetConfig.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-                                        <option value="その他">その他</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1">内容</label>
-                                <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 font-bold text-slate-700 outline-none" placeholder="例: スーパーなど" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-slate-500 mb-1">金額 (円)</label>
-                                <div className="relative">
-                                    <input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 pl-4 pr-10 text-xl font-bold text-slate-800 outline-none text-right" placeholder="0" />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">円</span>
-                                </div>
-                            </div>
-                            <button onClick={handleSubmit} className="w-full bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-slate-700 transition-all mt-2 active:scale-95">追加する</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
         const FamilyFinanceApp = () => {
             const [activeTab, setActiveTab] = useState('home'); 
-            // 2026年1月スタート
             const [selectedDate, setSelectedDate] = useState(new Date('2026-01-01'));
             const [isModalOpen, setIsModalOpen] = useState(false);
             
-            // --- データ永続化 (LocalStorage) ---
-            const [contributions, setContributions] = useState(() => {
-                const saved = localStorage.getItem(STORAGE_KEY_CONTRIBUTIONS);
-                return saved ? JSON.parse(saved) : { husband: 220000, wife: 200000 };
-            });
-            
-            const [transactions, setTransactions] = useState(() => {
-                const saved = localStorage.getItem(STORAGE_KEY_TRANSACTIONS);
-                return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-            });
-
+            // State
+            const [contributions, setContributions] = useState({ husband: 220000, wife: 200000 });
+            const [transactions, setTransactions] = useState([]);
+            const [savingsConfig, setSavingsConfig] = useState(INITIAL_SAVINGS_CONFIG);
             const [budgetConfig, setBudgetConfig] = useState(INITIAL_BUDGET_CONFIG);
+            
+            const [user, setUser] = useState(null);
+            const [isSaving, setIsSaving] = useState(false);
+
+            // --- Firebase Auth & Firestore Listener ---
+            useEffect(() => {
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                initAuth();
+                const unsubscribe = onAuthStateChanged(auth, setUser);
+                return () => unsubscribe();
+            }, []);
 
             useEffect(() => {
-                localStorage.setItem(STORAGE_KEY_CONTRIBUTIONS, JSON.stringify(contributions));
-            }, [contributions]);
+                if (!user) return;
 
-            useEffect(() => {
-                localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify(transactions));
-            }, [transactions]);
+                // Listen for Settings
+                const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'settings');
+                const unsubSettings = onSnapshot(settingsRef, (doc) => {
+                    if (doc.exists()) {
+                        const data = doc.data();
+                        if (data.contributions) setContributions(data.contributions);
+                        if (data.savings) setSavingsConfig(data.savings);
+                    }
+                }, (err) => console.error("Settings sync error", err));
+
+                // Listen for Transactions
+                const txRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'transactions');
+                const unsubTx = onSnapshot(txRef, (doc) => {
+                    if (doc.exists()) {
+                        const data = doc.data();
+                        if (data.list) setTransactions(data.list);
+                    }
+                }, (err) => console.error("Tx sync error", err));
+
+                return () => {
+                    unsubSettings();
+                    unsubTx();
+                };
+            }, [user]);
+
+            // --- Save Helpers ---
+            const saveTransactionsToCloud = async (newTransactions) => {
+                if (!user) return;
+                setIsSaving(true);
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'transactions'), {
+                        list: newTransactions
+                    });
+                } catch (e) { console.error(e); }
+                setIsSaving(false);
+            };
+
+            const saveSettingsToCloud = async (newContributions, newSavings) => {
+                if (!user) return;
+                setIsSaving(true);
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'settings'), {
+                        contributions: newContributions,
+                        savings: newSavings
+                    });
+                } catch (e) { console.error(e); }
+                setIsSaving(false);
+            };
 
             const isOddMonth = (selectedDate.getMonth() + 1) % 2 !== 0;
 
@@ -770,7 +854,9 @@
                 : contributions.husband + contributions.wife;
 
             const currentTotalExpenses = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
-            const totalSavingsPlanned = INITIAL_SAVINGS_CONFIG.reduce((sum, s) => sum + s.amount, 0);
+            
+            const totalSavingsPlanned = useMemo(() => savingsConfig.reduce((sum, s) => sum + s.amount, 0), [savingsConfig]);
+            
             const surplus = actualMonthlyIncome - currentTotalExpenses - totalSavingsPlanned;
 
             const lastHistoryAsset = ASSET_HISTORY_DETAILED.length > 0 
@@ -789,17 +875,22 @@
             const growthSinceStart = currentTotalAssets - firstHistoryAsset;
 
             const toggleShared = (id) => {
-                setTransactions(prev => prev.map(t => t.id === id ? { ...t, isShared: !t.isShared } : t));
+                const newTransactions = transactions.map(t => t.id === id ? { ...t, isShared: !t.isShared } : t);
+                setTransactions(newTransactions); // Optimistic Update
+                saveTransactionsToCloud(newTransactions);
             };
 
             const handleManualAdd = (data) => {
                 const newTx = { id: Date.now(), ...data, type: 'expense', isShared: true };
-                setTransactions(prev => [newTx, ...prev]);
+                const newTransactions = [newTx, ...transactions];
+                setTransactions(newTransactions);
+                saveTransactionsToCloud(newTransactions);
             };
             
-            // CSV追加処理
             const handleCsvAdd = (newTxList) => {
-                setTransactions(prev => [...newTxList, ...prev]);
+                const newTransactions = [...newTxList, ...transactions];
+                setTransactions(newTransactions);
+                saveTransactionsToCloud(newTransactions);
                 alert(`${newTxList.length}件の明細を追加しました。`);
             };
             
@@ -816,25 +907,33 @@
                     type: 'income',
                     isShared: true
                 };
-                setTransactions(prev => [newTx, ...prev]);
+                const newTransactions = [newTx, ...transactions];
+                setTransactions(newTransactions);
+                saveTransactionsToCloud(newTransactions);
                 alert(`${selectedDate.getMonth() + 1}月の収入として ${amount.toLocaleString()}円 を登録しました`);
             };
 
             const handleClearData = () => {
-                if(confirm('本当にすべてのデータを削除しますか？\nこの操作は取り消せません。')) {
+                if(confirm('本当にすべてのデータを削除しますか？\nクラウド上のデータも消去されます。')) {
                     setTransactions([]);
                     setContributions({ husband: 220000, wife: 200000 });
+                    saveTransactionsToCloud([]);
+                    saveSettingsToCloud({ husband: 220000, wife: 200000 }, INITIAL_SAVINGS_CONFIG);
                     alert('データを初期化しました');
                 }
             };
 
             const updateTransaction = (id, field, value) => {
-                setTransactions(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+                const newTransactions = transactions.map(t => t.id === id ? { ...t, [field]: value } : t);
+                setTransactions(newTransactions);
+                saveTransactionsToCloud(newTransactions);
             };
 
             const deleteTransaction = (id) => {
                 if (confirm('この明細を削除してもよろしいですか？')) {
-                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    const newTransactions = transactions.filter(t => t.id !== id);
+                    setTransactions(newTransactions);
+                    saveTransactionsToCloud(newTransactions);
                 }
             };
 
@@ -858,10 +957,23 @@
                                 <div><h1 className="text-base font-extrabold text-slate-800 leading-tight">家族まる見え<br/>家計簿</h1></div>
                             </div>
                             
-                            <div className="flex items-center bg-slate-100 rounded-full p-1">
-                                <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
-                                <span className="text-xs font-bold px-2 text-slate-700 min-w-[80px] text-center">{selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月</span>
-                                <button onClick={() => changeMonth(1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronRight className="w-4 h-4 text-slate-500" /></button>
+                            <div className="flex items-center gap-2">
+                                {user ? (
+                                    <div className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
+                                        <Cloud className="w-3 h-3" />
+                                        <span>同期中</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
+                                        <CloudOff className="w-3 h-3" />
+                                        <span>オフライン</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center bg-slate-100 rounded-full p-1">
+                                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronLeft className="w-4 h-4 text-slate-500" /></button>
+                                    <span className="text-xs font-bold px-2 text-slate-700 min-w-[80px] text-center">{selectedDate.getFullYear()}年{selectedDate.getMonth() + 1}月</span>
+                                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-white rounded-full transition-all"><ChevronRight className="w-4 h-4 text-slate-500" /></button>
+                                </div>
                             </div>
                         </div>
                     </header>
@@ -898,6 +1010,7 @@
                             totalCash={totalCash}
                             totalInvest={totalInvest}
                             currentTotalAssets={currentTotalAssets}
+                            savingsConfig={savingsConfig}
                         />}
                         {activeTab === 'settings' && <SettingsView 
                             contributions={contributions}
@@ -906,6 +1019,9 @@
                             selectedDate={selectedDate}
                             handleCsvAdd={handleCsvAdd}
                             handleClearData={handleClearData}
+                            savingsConfig={savingsConfig}
+                            setSavingsConfig={setSavingsConfig}
+                            saveSettingsToCloud={saveSettingsToCloud}
                         />}
                     </main>
 
