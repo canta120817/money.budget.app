@@ -8,11 +8,19 @@
     <!-- デザイン（Tailwind CSS） -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Reactとライブラリの読み込み設定 -->
+    <!-- 重要: Recharts等のライブラリが参照するprocess変数を定義 -->
+    <script>
+        window.process = {
+            env: { NODE_ENV: 'production' }
+        };
+    </script>
+
+    <!-- Reactとライブラリの読み込み設定 (Import Map) -->
     <script type="importmap">
     {
       "imports": {
         "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
         "lucide-react": "https://esm.sh/lucide-react@0.344.0",
         "recharts": "https://esm.sh/recharts@2.12.3?external=react,react-dom"
@@ -21,7 +29,7 @@
     </script>
     
     <!-- JSXをブラウザで動かすための変換ツール -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
 
     <style>
         body { background-color: #f0f9f6; color: #1e293b; font-family: sans-serif; }
@@ -29,14 +37,19 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-fade-in-up { animation: fadeIn 0.4s ease-out forwards; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* モーダルなどのz-index調整 */
+        .z-60 { z-index: 60; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <!-- ここからアプリケーションのコード -->
-    <script type="text/babel" data-type="module">
+    <!-- アプリケーションコード -->
+    <!-- data-type="module" と data-presets="react" を指定してBabelにESMとして処理させる -->
+    <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useMemo, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
@@ -155,7 +168,7 @@
             };
 
             return (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden animate-fade-in-up">
                         <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
@@ -683,5 +696,3 @@
     </script>
 </body>
 </html>
-
-
