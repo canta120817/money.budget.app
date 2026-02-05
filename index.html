@@ -83,7 +83,8 @@
         const FAMILY_BUDGET_ID = 'cantarion'; 
 
         // ★★★ Firebase設定エリア ★★★
-        // Firebaseコンソールで取得したconfigをここに貼り付けてください
+        // 【重要】GitHubに上げる前に、ここにFirebaseの設定値をコピペしてください。
+        // これが空のままだと、デプロイ先でクラウド同期ができず、データが消えたように見えます。
         const MANUAL_FIREBASE_CONFIG = {
             apiKey: "AIzaSyATk-gixUK0uxkxrMkfx6nzGKXJzT_kQbY",
             authDomain: "family-budget-app-9d7ce.firebaseapp.com",
@@ -903,7 +904,10 @@
                     await setDoc(getPublicPath('transactions'), {
                         list: newTransactions
                     });
-                } catch (e) { console.error(e); }
+                } catch (e) { 
+                    console.error(e);
+                    alert("【保存エラー】データのクラウド保存に失敗しました。\n設定や通信状況を確認してください。\n" + e.message);
+                }
                 setIsSaving(false);
             };
 
@@ -920,7 +924,10 @@
                         contributions: newContributions,
                         savings: newSavings
                     });
-                } catch (e) { console.error(e); }
+                } catch (e) { 
+                    console.error(e);
+                    alert("【保存エラー】設定のクラウド保存に失敗しました。\n" + e.message);
+                }
                 setIsSaving(false);
             };
 
