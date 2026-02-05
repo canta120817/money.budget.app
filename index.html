@@ -62,7 +62,7 @@
             LayoutGrid, ArrowLeftRight, RefreshCw, AlertTriangle, ChevronRight,
             UploadCloud, FileText, Download, Plus, X, Calendar, Tag, ShoppingBag,
             Target, BarChart3, ArrowUpRight, Percent, ChevronLeft, Save, Trash2, Edit2,
-            Cloud, CloudOff
+            Cloud, CloudOff, Users
         } from 'lucide-react';
         import { 
             BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -76,10 +76,14 @@
 
         // --- Firebase Initialization (Hybrid Mode) ---
         
-        // ★★★ PC/スマホ同期のための設定エリア ★★★
-        // GitHub等で同期機能を使う場合は、Firebaseコンソールでプロジェクトを作成し、
-        // 以下のconfigオブジェクト内にAPIキー等を貼り付けてください。
-        // 設定がない場合は「オフラインモード（ブラウザ保存）」で動作します。
+        // ★★★ 【重要】家族共有IDの設定 ★★★
+        // 夫婦で同じデータを見るために、ここを二人だけの「合言葉（英数字）」に変更してください。
+        // ※このIDを知っている人だけがデータを見れます。他と被らないユニークな名前にしてください。
+        // 例: 'tanaka-2026-secret'
+        const FAMILY_BUDGET_ID = 'cantarion'; 
+
+        // ★★★ Firebase設定エリア ★★★
+        // Firebaseコンソールで取得したconfigをここに貼り付けてください
         const MANUAL_FIREBASE_CONFIG = {
             apiKey: "AIzaSyATk-gixUK0uxkxrMkfx6nzGKXJzT_kQbY",
             authDomain: "family-budget-app-9d7ce.firebaseapp.com",
@@ -93,18 +97,25 @@
         let auth = null;
         let db = null;
         let useCloud = false;
-        let appId = 'family-budget-app'; // Default ID for path
+        // デフォルトは共有ID
+        let appId = FAMILY_BUDGET_ID;
 
         try {
             let config = null;
             // 優先度1: 環境変数 (AIプレビュー環境用)
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 config = JSON.parse(__firebase_config);
-                if (typeof __app_id !== 'undefined') appId = __app_id;
+                // Canvas環境では権限エラー回避のため、強制的にシステム提供のAppIDを使用する
+                if (typeof __app_id !== 'undefined') {
+                    appId = __app_id;
+                    console.log("Canvas Env: Using system app_id");
+                }
             } 
             // 優先度2: 手動設定 (GitHub Pagesデプロイ用)
             else if (MANUAL_FIREBASE_CONFIG.apiKey) {
                 config = MANUAL_FIREBASE_CONFIG;
+                // GitHub Pages等では設定したFAMILY_BUDGET_IDを使用
+                appId = FAMILY_BUDGET_ID;
             }
 
             if (config) {
@@ -112,7 +123,7 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
                 useCloud = true;
-                console.log("Firebase initialized: Cloud Mode");
+                console.log("Firebase initialized: Cloud Mode with ID:", appId);
             } else {
                 console.log("Firebase config not found: Offline Mode (LocalStorage)");
             }
@@ -845,11 +856,18 @@
                 return () => unsubscribe();
             }, []);
 
+            // Firestoreパスの構築ヘルパー
+            const getPublicPath = (collectionName) => {
+                 // 常に 'public' パスを使用することで、ユーザーIDに関係なくデータを共有
+                 // artifactIdの代わりに FAMILY_BUDGET_ID を使用
+                 return doc(db, 'artifacts', appId, 'public', 'data', collectionName, 'current');
+            };
+
             useEffect(() => {
                 if (!user || !useCloud) return;
 
-                // Listen for Settings
-                const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'settings');
+                // Listen for Settings (Public Path)
+                const settingsRef = getPublicPath('settings');
                 const unsubSettings = onSnapshot(settingsRef, (doc) => {
                     if (doc.exists()) {
                         const data = doc.data();
@@ -858,8 +876,8 @@
                     }
                 }, (err) => console.error("Settings sync error", err));
 
-                // Listen for Transactions
-                const txRef = doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'transactions');
+                // Listen for Transactions (Public Path)
+                const txRef = getPublicPath('transactions');
                 const unsubTx = onSnapshot(txRef, (doc) => {
                     if (doc.exists()) {
                         const data = doc.data();
@@ -873,7 +891,7 @@
                 };
             }, [user]);
 
-            // --- Save Helpers ---
+            // --- Save Helpers (Public Path) ---
             const saveTransactionsToCloud = async (newTransactions) => {
                 if (!useCloud) {
                     localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify(newTransactions));
@@ -882,7 +900,7 @@
                 if (!user) return;
                 setIsSaving(true);
                 try {
-                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'transactions'), {
+                    await setDoc(getPublicPath('transactions'), {
                         list: newTransactions
                     });
                 } catch (e) { console.error(e); }
@@ -898,7 +916,7 @@
                 if (!user) return;
                 setIsSaving(true);
                 try {
-                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'data', 'settings'), {
+                    await setDoc(getPublicPath('settings'), {
                         contributions: newContributions,
                         savings: newSavings
                     });
@@ -1038,7 +1056,7 @@
                                 {useCloud ? (
                                     <div className="flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">
                                         <Cloud className="w-3 h-3" />
-                                        <span>同期中</span>
+                                        <span>家族共有中</span>
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
